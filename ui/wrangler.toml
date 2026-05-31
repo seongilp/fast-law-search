@@ -1,5 +1,0 @@
-# Cloudflare Pages 배포 설정.
-# 프로젝트 생성/배포: pnpm deploy:cf  (아래 package.json 스크립트)
-name = "legalize-kr"
-pages_build_output_dir = "dist"
-compatibility_date = "2026-05-31"
