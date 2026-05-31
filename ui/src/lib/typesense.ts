@@ -2,17 +2,29 @@ import TypesenseInstantSearchAdapter from "typesense-instantsearch-adapter";
 
 const env = import.meta.env;
 
+// 운영 기본값. 빌드 환경에서 VITE_* 가 주입되면 그 값이 우선하고,
+// 없으면 아래 운영 서버로 동작한다(과거엔 localhost 로 fallback 해서
+// 배포본이 검색을 못 했음). search-only 키는 documents:search 권한만 있어
+// 브라우저 노출이 안전하다.
+const DEFAULTS = {
+  host: "146-190-96-6.nip.io",
+  port: 443,
+  protocol: "https",
+  searchKey: "vOivZ7H3LZN2KgfbJyazlNyAGnsPlxj2",
+  collection: "kr_laws",
+};
+
 export const COLLECTION =
-  (env.VITE_TYPESENSE_COLLECTION as string) || "kr_laws";
+  (env.VITE_TYPESENSE_COLLECTION as string) || DEFAULTS.collection;
 
 const adapter = new TypesenseInstantSearchAdapter({
   server: {
-    apiKey: (env.VITE_TYPESENSE_SEARCH_KEY as string) || "legalize_dev_key",
+    apiKey: (env.VITE_TYPESENSE_SEARCH_KEY as string) || DEFAULTS.searchKey,
     nodes: [
       {
-        host: (env.VITE_TYPESENSE_HOST as string) || "localhost",
-        port: Number(env.VITE_TYPESENSE_PORT) || 8108,
-        protocol: (env.VITE_TYPESENSE_PROTOCOL as string) || "http",
+        host: (env.VITE_TYPESENSE_HOST as string) || DEFAULTS.host,
+        port: Number(env.VITE_TYPESENSE_PORT) || DEFAULTS.port,
+        protocol: (env.VITE_TYPESENSE_PROTOCOL as string) || DEFAULTS.protocol,
       },
     ],
     cacheSearchResultsForSeconds: 120,
@@ -29,10 +41,10 @@ const adapter = new TypesenseInstantSearchAdapter({
 
 export const searchClient = adapter.searchClient;
 
-const TS_HOST = (env.VITE_TYPESENSE_HOST as string) || "localhost";
-const TS_PORT = Number(env.VITE_TYPESENSE_PORT) || 8108;
-const TS_PROTO = (env.VITE_TYPESENSE_PROTOCOL as string) || "http";
-const TS_KEY = (env.VITE_TYPESENSE_SEARCH_KEY as string) || "legalize_dev_key";
+const TS_HOST = (env.VITE_TYPESENSE_HOST as string) || DEFAULTS.host;
+const TS_PORT = Number(env.VITE_TYPESENSE_PORT) || DEFAULTS.port;
+const TS_PROTO = (env.VITE_TYPESENSE_PROTOCOL as string) || DEFAULTS.protocol;
+const TS_KEY = (env.VITE_TYPESENSE_SEARCH_KEY as string) || DEFAULTS.searchKey;
 
 /**
  * 커맨드 팔레트용 경량 라이브 검색. InstantSearch 와 별개로
