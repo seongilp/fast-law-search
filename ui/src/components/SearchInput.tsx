@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useSearchBox } from "react-instantsearch";
 import { Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -22,12 +22,22 @@ export function SearchInput({ compact = false, hint }: SearchInputProps) {
   const { query, refine } = useSearchBox();
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // 로컬 입력값. controlled value 를 매 키마다 되돌리면 한글 IME 조합이
+  // 깨지므로(예: "ㄱd"), 표시값은 로컬에서 관리하고 조합 중에는 refine 보류.
+  const [value, setValue] = useState(query);
+  const composing = useRef(false);
+
+  // 외부에서 query 가 바뀌면(Esc 초기화, 커맨드 팔레트 선택 등) 동기화.
+  // 단, 한글 조합 중에는 건드리지 않는다.
+  useEffect(() => {
+    if (!composing.current) setValue(query);
+  }, [query]);
+
   // "/" 키로 검색창에 즉시 포커스 (입력 중이거나 ⌘K 팔레트가 열려있으면 무시)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
       if (isTypingTarget(document.activeElement)) return;
-      // 모달(커맨드 팔레트) 떠 있으면 무시
       if (document.querySelector('[role="dialog"]')) return;
       e.preventDefault();
       inputRef.current?.focus();
@@ -35,6 +45,12 @@ export function SearchInput({ compact = false, hint }: SearchInputProps) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
+
+  function clear() {
+    setValue("");
+    refine("");
+    inputRef.current?.focus();
+  }
 
   return (
     <div className="relative">
@@ -46,31 +62,40 @@ export function SearchInput({ compact = false, hint }: SearchInputProps) {
       />
       <Input
         ref={inputRef}
-        value={query}
-        onChange={(e) => refine(e.target.value)}
+        value={value}
+        onChange={(e) => {
+          const v = e.target.value;
+          setValue(v);
+          // 조합 중이 아니면 즉시 검색. 조합 중이면 compositionend 에서 refine.
+          if (!composing.current) refine(v);
+        }}
+        onCompositionStart={() => {
+          composing.current = true;
+        }}
+        onCompositionEnd={(e) => {
+          composing.current = false;
+          refine(e.currentTarget.value);
+        }}
         onKeyDown={(e) => {
           // Esc: 검색어 지우기 → 깨끗한 화면으로
-          if (e.key === "Escape" && query) {
+          if (e.key === "Escape" && value) {
             e.preventDefault();
-            refine("");
+            clear();
           }
         }}
         autoFocus
         placeholder="법령명·조문 내용·소관부처로 검색 …"
         className={cn(
           "rounded-full border-input pl-12 shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40",
-          hint || query ? "pr-14" : "pr-4",
+          hint || value ? "pr-14" : "pr-4",
           compact ? "h-11 text-sm" : "h-14 text-base shadow-md"
         )}
       />
-      {query ? (
+      {value ? (
         <button
           type="button"
           aria-label="검색어 지우기"
-          onClick={() => {
-            refine("");
-            inputRef.current?.focus();
-          }}
+          onClick={clear}
           className="absolute right-3 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <X className="size-4" />
