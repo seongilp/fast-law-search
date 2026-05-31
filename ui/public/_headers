@@ -1,0 +1,8 @@
+# HTML 은 항상 재검증 (옛 index.html 캐시로 구버전 번들을 물지 않게).
+# 해시된 에셋(js/css)은 영구 캐시해도 안전(파일명에 해시 포함).
+/
+  Cache-Control: no-cache, must-revalidate
+/index.html
+  Cache-Control: no-cache, must-revalidate
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

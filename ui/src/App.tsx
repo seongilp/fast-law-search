@@ -49,10 +49,13 @@ function Shell() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      {/* 테마 토글: 항상 우상단 고정 (전환과 무관하게 안정) */}
-      <div className="fixed right-3 top-3 z-30">
-        <ThemeToggle />
-      </div>
+      {/* 랜딩일 때만 토글을 우상단에 둔다(검색창과 안 겹침). 결과 화면에선
+          헤더 안에 인라인으로 배치한다(아래). */}
+      {!hasQuery && (
+        <div className="flex justify-end px-3 py-3">
+          <ThemeToggle />
+        </div>
+      )}
 
       {/* 검색 영역: 바깥/안쪽 래퍼는 className 만 바뀌고 요소 정체성은 유지된다.
           → key="search" 의 SearchInput 은 remount 되지 않는다. */}
@@ -67,8 +70,8 @@ function Shell() {
         <div
           className={cn(
             hasQuery
-              ? "mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6"
-              : "flex w-full max-w-2xl flex-col items-center"
+              ? "mx-auto flex max-w-6xl items-center gap-2 px-3 py-3 sm:gap-3 sm:px-6"
+              : "-mt-16 flex w-full max-w-2xl flex-col items-center"
           )}
         >
           {hasQuery ? (
@@ -97,9 +100,12 @@ function Shell() {
             </div>
           )}
 
-          <div key="search" className={hasQuery ? "flex-1" : "w-full"}>
+          <div key="search" className={hasQuery ? "min-w-0 flex-1" : "w-full"}>
             <SearchInput compact={hasQuery} hint={<KbdHint />} />
           </div>
+
+          {/* 결과 화면: 토글을 검색창 오른쪽 바깥에 인라인 배치(겹침 없음) */}
+          {hasQuery && <ThemeToggle />}
         </div>
       </div>
 
