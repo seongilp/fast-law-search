@@ -112,7 +112,7 @@ function Shell() {
           </div>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[240px_1fr]">
-            <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+            <aside className="space-y-2 lg:sticky lg:top-20 lg:self-start lg:space-y-4">
               <RefinementFacet
                 attribute="law_type"
                 title="법령구분"
