@@ -21,23 +21,20 @@ function isTypingTarget(el: EventTarget | null): boolean {
 /**
  * 검색 입력.
  *
- * input 을 **uncontrolled** 로 둔다(value prop 없음). controlled 로 두면
- * 조합 중 refine() → 리렌더 → React 가 value 를 재설정하면서 iOS Safari 의
- * 한글 IME 조합 버퍼가 깨진다(예: "음" → "ㅇㅡㅁ"). uncontrolled 라 React 가
- * value 를 건드리지 않으므로 모바일에서도 조합이 안 깨진다.
- *
- * 표시값은 브라우저/IME 가 직접 관리하고, refine() 만 onChange 에서 호출한다.
- * 외부에서 값을 바꿔야 할 때(Esc 초기화, 커맨드 팔레트 선택)는 DOM value 를
- * ref 로 직접 설정한다.
+ * input 을 **uncontrolled**(value 바인딩 없음, defaultValue 만)로 둔다.
+ * controlled 로 두면 조합 중 refine→리렌더→React 가 value 를 재설정하며 iOS
+ * 한글 IME 조합이 깨진다("음"→"ㅇㅡㅁ"). uncontrolled 라 React 가 value 를
+ * 건드리지 않으므로 모바일에서도 안 깨지고, onChange 로 매 입력마다 검색해도
+ * 안전하다.
  */
 export function SearchInput({ compact = false, hint }: SearchInputProps) {
   const { query, refine } = useSearchBox();
   const inputRef = useRef<HTMLInputElement>(null);
   const composing = useRef(false);
-  // 지우기 버튼 표시 여부만 위한 최소 상태 (input value 는 바인딩하지 않음).
   const [hasValue, setHasValue] = useState(Boolean(query));
 
-  // 외부 query 변화(초기화/팔레트 선택)를 DOM 에 반영. 조합 중엔 건드리지 않음.
+  // 외부 query 변화(Esc 초기화, 커맨드 팔레트 선택)를 DOM 에 반영.
+  // 조합 중엔 건드리지 않는다.
   useEffect(() => {
     const el = inputRef.current;
     if (!el || composing.current) return;
@@ -46,23 +43,6 @@ export function SearchInput({ compact = false, hint }: SearchInputProps) {
       setHasValue(Boolean(query));
     }
   }, [query]);
-
-  // 네이티브 input 이벤트로 검색을 건다. iOS Safari 는 한글 조합 중 React 의
-  // synthetic onChange 를 안 쏘는 경우가 있어, compositionend 전까지 검색이
-  // 안 나간다. 네이티브 input 은 조합 중에도 매 입력마다 발화하므로 이걸로
-  // 검색을 트리거하면 조합 중에도 즉시 결과가 갱신된다.
-  useEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    const onInput = () => {
-      setHasValue(Boolean(el.value));
-      refine(el.value);
-    };
-    el.addEventListener("input", onInput);
-    return () => el.removeEventListener("input", onInput);
-    // refine 은 InstantSearch 가 안정적으로 제공하므로 1회 등록으로 충분
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // "/" 키로 검색창 포커스 (입력 중이거나 ⌘K 팔레트가 열려있으면 무시)
   useEffect(() => {
@@ -77,11 +57,15 @@ export function SearchInput({ compact = false, hint }: SearchInputProps) {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
+  function apply(v: string) {
+    setHasValue(Boolean(v));
+    refine(v);
+  }
+
   function clear() {
     const el = inputRef.current;
     if (el) el.value = "";
-    setHasValue(false);
-    refine("");
+    apply("");
     el?.focus();
   }
 
@@ -96,14 +80,14 @@ export function SearchInput({ compact = false, hint }: SearchInputProps) {
       <Input
         ref={inputRef}
         defaultValue={query}
-        // 검색 트리거는 네이티브 input 리스너(위 useEffect)가 담당한다.
-        // onChange 는 React 가 controlled 로 오해하지 않게 no-op 으로 둔다.
-        onChange={() => {}}
+        onChange={(e) => apply(e.target.value)}
         onCompositionStart={() => {
           composing.current = true;
         }}
-        onCompositionEnd={() => {
+        onCompositionEnd={(e) => {
           composing.current = false;
+          // iOS 등에서 조합 종료 시 onChange 가 누락될 수 있어 한 번 더 동기화
+          apply(e.currentTarget.value);
         }}
         onKeyDown={(e) => {
           if (e.key === "Escape" && inputRef.current?.value) {
