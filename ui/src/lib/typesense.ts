@@ -7,7 +7,7 @@ const env = import.meta.env;
 // 배포본이 검색을 못 했음). search-only 키는 documents:search 권한만 있어
 // 브라우저 노출이 안전하다.
 const DEFAULTS = {
-  host: "146-190-96-6.nip.io",
+  host: "api-law.zihado.com",
   port: 443,
   protocol: "https",
   searchKey: "vOivZ7H3LZN2KgfbJyazlNyAGnsPlxj2",
