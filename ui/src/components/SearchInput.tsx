@@ -33,6 +33,10 @@ export function SearchInput({ compact = false, hint }: SearchInputProps) {
   const composing = useRef(false);
   const [hasValue, setHasValue] = useState(Boolean(query));
 
+  // 최신 refine 을 ref 로 보관(전역 keydown 리스너의 stale closure 방지).
+  const refineRef = useRef(refine);
+  refineRef.current = refine;
+
   // 외부 query 변화(Esc 초기화, 커맨드 팔레트 선택)를 DOM 에 반영.
   // 조합 중엔 건드리지 않는다.
   useEffect(() => {
@@ -44,17 +48,36 @@ export function SearchInput({ compact = false, hint }: SearchInputProps) {
     }
   }, [query]);
 
-  // "/" 키로 검색창 포커스 (입력 중이거나 ⌘K 팔레트가 열려있으면 무시)
+  // 전역 단축키:
+  //  "/"   → 검색창 포커스 (입력 중이거나 ⌘K 팔레트가 열려있으면 무시)
+  //  "Esc" → 검색어/결과 초기화 (검색창 포커스 여부와 무관하게 어디서나)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (isTypingTarget(document.activeElement)) return;
+      // ⌘K 팔레트(모달) 떠 있으면 전역 단축키 무시
       if (document.querySelector('[role="dialog"]')) return;
-      e.preventDefault();
-      inputRef.current?.focus();
+
+      if (e.key === "Escape") {
+        const el = inputRef.current;
+        if (el?.value) {
+          e.preventDefault();
+          el.value = "";
+          setHasValue(false);
+          refineRef.current(""); // 최신 refine 사용
+          el.focus();
+        }
+        return;
+      }
+
+      if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (isTypingTarget(document.activeElement)) return;
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
+    // clear 는 매 렌더 새로 생성되지만 ref 만 참조하므로 안정적 — 1회 등록으로 충분
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function apply(v: string) {
@@ -88,12 +111,6 @@ export function SearchInput({ compact = false, hint }: SearchInputProps) {
           composing.current = false;
           // iOS 등에서 조합 종료 시 onChange 가 누락될 수 있어 한 번 더 동기화
           apply(e.currentTarget.value);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Escape" && inputRef.current?.value) {
-            e.preventDefault();
-            clear();
-          }
         }}
         autoFocus
         placeholder="법령명·조문 내용·소관부처로 검색 …"
