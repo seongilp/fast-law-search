@@ -22,13 +22,15 @@ export function SearchInput({ compact = false, hint }: SearchInputProps) {
   const { query, refine } = useSearchBox();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // 로컬 입력값. controlled value 를 매 키마다 되돌리면 한글 IME 조합이
-  // 깨지므로(예: "ㄱd"), 표시값은 로컬에서 관리하고 조합 중에는 refine 보류.
+  // 표시값은 로컬 state 로 관리한다. react-instantsearch 의 query 를 input value
+  // 에 직접 바인딩하면 매 키마다 controlled value 가 되돌아와 한글 IME 조합이
+  // 깨진다(예: "ㄱd"). 표시값을 분리했으므로 조합 중에도 refine 을 호출해도
+  // 안전하다 → "음주운전"을 띄어쓰기 없이 쳐도 글자마다 즉시 검색된다.
   const [value, setValue] = useState(query);
   const composing = useRef(false);
 
-  // 외부에서 query 가 바뀌면(Esc 초기화, 커맨드 팔레트 선택 등) 동기화.
-  // 단, 한글 조합 중에는 건드리지 않는다.
+  // 외부에서 query 가 바뀔 때만(Esc 초기화, 커맨드 팔레트 선택 등) 표시값 동기화.
+  // 조합 중에는 건드리지 않아 IME 가 깨지지 않게 한다.
   useEffect(() => {
     if (!composing.current) setValue(query);
   }, [query]);
@@ -66,15 +68,14 @@ export function SearchInput({ compact = false, hint }: SearchInputProps) {
         onChange={(e) => {
           const v = e.target.value;
           setValue(v);
-          // 조합 중이 아니면 즉시 검색. 조합 중이면 compositionend 에서 refine.
-          if (!composing.current) refine(v);
+          // 조합 중이든 아니든 즉시 검색 (표시값을 분리해 IME 가 안 깨짐).
+          refine(v);
         }}
         onCompositionStart={() => {
           composing.current = true;
         }}
-        onCompositionEnd={(e) => {
+        onCompositionEnd={() => {
           composing.current = false;
-          refine(e.currentTarget.value);
         }}
         onKeyDown={(e) => {
           // Esc: 검색어 지우기 → 깨끗한 화면으로
