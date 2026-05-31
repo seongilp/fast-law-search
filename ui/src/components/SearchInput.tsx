@@ -47,6 +47,23 @@ export function SearchInput({ compact = false, hint }: SearchInputProps) {
     }
   }, [query]);
 
+  // 네이티브 input 이벤트로 검색을 건다. iOS Safari 는 한글 조합 중 React 의
+  // synthetic onChange 를 안 쏘는 경우가 있어, compositionend 전까지 검색이
+  // 안 나간다. 네이티브 input 은 조합 중에도 매 입력마다 발화하므로 이걸로
+  // 검색을 트리거하면 조합 중에도 즉시 결과가 갱신된다.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const onInput = () => {
+      setHasValue(Boolean(el.value));
+      refine(el.value);
+    };
+    el.addEventListener("input", onInput);
+    return () => el.removeEventListener("input", onInput);
+    // refine 은 InstantSearch 가 안정적으로 제공하므로 1회 등록으로 충분
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // "/" 키로 검색창 포커스 (입력 중이거나 ⌘K 팔레트가 열려있으면 무시)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -79,18 +96,14 @@ export function SearchInput({ compact = false, hint }: SearchInputProps) {
       <Input
         ref={inputRef}
         defaultValue={query}
-        onChange={(e) => {
-          const v = e.target.value;
-          setHasValue(Boolean(v));
-          refine(v);
-        }}
+        // 검색 트리거는 네이티브 input 리스너(위 useEffect)가 담당한다.
+        // onChange 는 React 가 controlled 로 오해하지 않게 no-op 으로 둔다.
+        onChange={() => {}}
         onCompositionStart={() => {
           composing.current = true;
         }}
-        onCompositionEnd={(e) => {
+        onCompositionEnd={() => {
           composing.current = false;
-          // 조합 종료 시점의 최종값으로 한 번 더 동기화
-          refine(e.currentTarget.value);
         }}
         onKeyDown={(e) => {
           if (e.key === "Escape" && inputRef.current?.value) {
