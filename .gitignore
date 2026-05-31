@@ -1,0 +1,16 @@
+# secrets / local env
+.env
+ui/.env.local
+
+# python
+.venv/
+__pycache__/
+*.pyc
+
+# node / build
+ui/node_modules/
+ui/dist/
+ui/.wrangler/
+
+# misc
+.DS_Store

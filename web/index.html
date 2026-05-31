@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>대한민국 법령 초고속 검색</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/instantsearch.css@8.5.1/themes/satellite-min.css" />
+  <style>
+    :root { --accent: #2b6cb0; --bg: #f7fafc; --ink: #1a202c; --muted: #718096; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      background: var(--bg); color: var(--ink);
+    }
+    header {
+      background: #fff; border-bottom: 1px solid #e2e8f0; padding: 18px 24px;
+      position: sticky; top: 0; z-index: 10;
+    }
+    header h1 { margin: 0 0 4px; font-size: 20px; }
+    header p { margin: 0; color: var(--muted); font-size: 13px; }
+    .layout { display: grid; grid-template-columns: 240px 1fr; gap: 24px; max-width: 1180px; margin: 0 auto; padding: 24px; }
+    .sidebar { font-size: 14px; }
+    .sidebar .panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+    .sidebar h3 { margin: 0 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .ais-SearchBox { margin-bottom: 8px; }
+    .ais-SearchBox-input { height: 48px; font-size: 16px; border-radius: 10px; }
+    #stats { color: var(--muted); font-size: 13px; margin: 4px 0 14px; }
+    .hit { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin-bottom: 12px; }
+    .hit-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+    .hit-law { font-weight: 700; font-size: 15px; }
+    .hit-art { color: var(--accent); font-weight: 600; font-size: 14px; }
+    .hit-title { color: var(--ink); font-size: 14px; }
+    .hit-badges { margin-left: auto; display: flex; gap: 6px; }
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #edf2f7; color: var(--muted); }
+    .badge.type { background: #ebf4ff; color: var(--accent); }
+    .hit-body { font-size: 14px; line-height: 1.7; color: #2d3748; white-space: pre-wrap; max-height: 9.5em; overflow: hidden; position: relative; }
+    .hit-body.expanded { max-height: none; }
+    .hit-meta { margin-top: 10px; font-size: 12px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
+    .hit-meta a { color: var(--accent); text-decoration: none; }
+    mark { background: #fefcbf; padding: 0 1px; }
+    .ais-RefinementList-item { margin-bottom: 4px; }
+    .ais-Pagination { margin-top: 16px; }
+    .toggle { cursor: pointer; color: var(--accent); font-size: 12px; margin-top: 6px; display: inline-block; }
+    @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>⚖️ 대한민국 법령 초고속 검색</h1>
+    <p>조문(條) 단위 전문검색 · Typesense · 한국어 토크나이저</p>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="panel"><h3>법령구분</h3><div id="facet-type"></div></div>
+      <div class="panel"><h3>소관부처</h3><div id="facet-ministry"></div></div>
+      <div class="panel"><h3>상태</h3><div id="facet-status"></div></div>
+    </aside>
+
+    <main>
+      <div id="searchbox"></div>
+      <div id="stats"></div>
+      <div id="hits"></div>
+      <div id="pagination"></div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/typesense-instantsearch-adapter@2.8.0/dist/typesense-instantsearch-adapter.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/instantsearch.js@4.73.4/dist/instantsearch.production.min.js"></script>
+  <script src="./config.js"></script>
+  <script>
+    const cfg = window.LEGALIZE_CONFIG;
+
+    const adapter = new TypesenseInstantSearchAdapter({
+      server: {
+        apiKey: cfg.searchOnlyApiKey,
+        nodes: [{ host: cfg.host, port: cfg.port, protocol: cfg.protocol }],
+        cacheSearchResultsForSeconds: 120,
+      },
+      additionalSearchParameters: {
+        query_by: "content,article_title,law_name,chapter",
+        query_by_weights: "3,5,4,1",
+        highlight_full_fields: "content,article_title,law_name",
+        highlight_affix_num_tokens: 12,
+        num_typos: 1,
+        per_page: 12,
+      },
+    });
+
+    const search = instantsearch({
+      indexName: cfg.collection,
+      searchClient: adapter.searchClient,
+      future: { preserveSharedStateOnUnmount: true },
+    });
+
+    const { searchBox, hits, stats, refinementList, pagination, configure } = instantsearch.widgets;
+
+    function hl(hit, attr) {
+      const h = hit._highlightResult && hit._highlightResult[attr];
+      return h && h.value ? h.value : (hit[attr] || "");
+    }
+
+    search.addWidgets([
+      configure({ hitsPerPage: 12 }),
+      searchBox({
+        container: "#searchbox",
+        placeholder: "예) 개인정보 동의, 손해배상, 음주운전, 제15조 ...",
+        autofocus: true,
+        showReset: true,
+      }),
+      stats({
+        container: "#stats",
+        templates: {
+          text(data) {
+            if (!data.query) return "검색어를 입력하세요. (타이핑하는 즉시 검색됩니다)";
+            return `${data.nbHits.toLocaleString()}개 조문 · ${data.processingTimeMS}ms`;
+          },
+        },
+      }),
+      refinementList({ container: "#facet-type", attribute: "law_type", limit: 8, showMore: true, searchable: true, searchablePlaceholder: "구분 검색" }),
+      refinementList({ container: "#facet-ministry", attribute: "ministry", limit: 8, showMore: true, searchable: true, searchablePlaceholder: "부처 검색" }),
+      refinementList({ container: "#facet-status", attribute: "status", limit: 6 }),
+      hits({
+        container: "#hits",
+        templates: {
+          empty: "검색 결과가 없습니다.",
+          item(hit, { html }) {
+            const law = hl(hit, "law_name");
+            const art = hit.article_label || "";
+            const title = hl(hit, "article_title");
+            const body = hl(hit, "content");
+            const src = hit.source_url
+              ? html`<a href="${hit.source_url}" target="_blank" rel="noopener">원문 ↗</a>`
+              : "";
+            const chap = hit.chapter ? html`<span>${hit.chapter}</span>` : "";
+            return html`
+              <div class="hit">
+                <div class="hit-head">
+                  <span class="hit-law" dangerouslySetInnerHTML=${{ __html: law }}></span>
+                  <span class="hit-art">${art}</span>
+                  <span class="hit-title" dangerouslySetInnerHTML=${{ __html: title }}></span>
+                  <span class="hit-badges">
+                    ${hit.law_type ? html`<span class="badge type">${hit.law_type}</span>` : ""}
+                    ${hit.status ? html`<span class="badge">${hit.status}</span>` : ""}
+                  </span>
+                </div>
+                <div class="hit-body" dangerouslySetInnerHTML=${{ __html: body }}></div>
+                <span class="toggle" onclick="this.previousElementSibling.classList.toggle('expanded'); this.textContent = this.previousElementSibling.classList.contains('expanded') ? '접기' : '더보기'">더보기</span>
+                <div class="hit-meta">
+                  ${chap}
+                  ${hit.ministry && hit.ministry.length ? html`<span>${hit.ministry.join(", ")}</span>` : ""}
+                  ${hit.enforcement_date ? html`<span>시행 ${String(hit.enforcement_date)}</span>` : ""}
+                  ${src}
+                </div>
+              </div>`;
+          },
+        },
+      }),
+      pagination({ container: "#pagination" }),
+    ]);
+
+    search.start();
+  </script>
+</body>
+</html>

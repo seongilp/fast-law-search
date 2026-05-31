@@ -1,0 +1,22 @@
+services:
+  typesense:
+    image: typesense/typesense:27.1
+    container_name: legalize-typesense
+    restart: unless-stopped
+    ports:
+      - "8108:8108"
+    volumes:
+      - typesense-data:/data
+    command: >
+      --data-dir /data
+      --api-key=${TYPESENSE_API_KEY:-legalize_dev_key}
+      --enable-cors
+    # 한국어 법령 전문(약 5,700개 파일 → 수십만 조문 도큐먼트)은
+    # 인메모리 인덱스라 RAM 여유가 필요합니다. 워크스테이션 기준 2~4GB 권장.
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+
+volumes:
+  typesense-data:
