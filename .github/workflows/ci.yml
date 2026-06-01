@@ -28,7 +28,12 @@ jobs:
           cache-dependency-path: ui/pnpm-lock.yaml
 
       - name: Install deps
+        # pnpm 11 은 esbuild/sharp/workerd 같은 네이티브 빌드 스크립트를
+        # 무시하면 에러(exit 1)를 낸다. 이 env 로 빌드 스크립트를 허용해
+        # frozen install 이 통과하게 한다.
         run: pnpm install --frozen-lockfile
+        env:
+          PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS: "true"
 
       - name: Typecheck + build
         run: pnpm build
