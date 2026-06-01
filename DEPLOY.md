@@ -26,8 +26,17 @@
 
 ## 자동 재색인
 - Droplet cron: 매일 03:00 KST → `reindex.sh`
-  (원본 레포 `git pull` → `index.py --alias` 무중단 전환)
+  (원본 레포 `git pull` → `index.py --alias` 무중단 alias 전환)
 - 수동: `ssh root@146.190.96.6 /opt/legalize/reindex.sh`
+- **flock** 으로 동시 실행 방지(`.reindex.lock`). 중복 실행 시 alias/cleanup
+  충돌로 실패(RC=2)하던 문제를 막는다.
+- **텔레그램 알림**(성공/실패 모두):
+  - ✅ 성공: `법령 색인 완료 / 조문 N건 / alias 전환 / 🔎 law.zihado.com`
+  - ❌ 실패: `법령 색인 실패` + 마지막 로그 4줄
+  - 봇 `@opgarun_bot`(opgarun 과 공용), chat id `66077028`
+  - 자격: Droplet `/opt/legalize/.telegram` (chmod 600, `TELEGRAM_BOT_TOKEN`
+    /`TELEGRAM_CHAT_ID`). git·코드에 미포함.
+- `reindex.sh` 는 Droplet 운영 파일(레포에 없음). 전체 내용은 `docs/reindex.sh` 참고용 사본.
 
 ## 키 관리
 - **admin(쓰기) 키**: Droplet 의 `docker-compose.yml` 에만 존재. 외부 노출 금지.
