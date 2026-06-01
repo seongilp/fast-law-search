@@ -1,6 +1,7 @@
 name: CI
 
 # push / PR 마다 UI 빌드를 검증한다. 깨진 코드가 배포되는 것을 막는다.
+# main push 에서 빌드가 실패하면 자동으로 GitHub 이슈를 생성한다.
 on:
   push:
     branches: [main]
@@ -31,3 +32,49 @@ jobs:
 
       - name: Typecheck + build
         run: pnpm build
+
+  # build job 이 main push 에서 실패하면 이슈를 자동 생성(중복 방지: 같은 제목 열린 이슈 있으면 댓글만)
+  notify-on-failure:
+    needs: build
+    if: ${{ failure() && github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update CI failure issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const sha = context.sha.slice(0, 7);
+            const title = "CI 빌드 실패";
+            const body = [
+              `**CI 빌드가 실패했습니다.**`,
+              ``,
+              `- 커밋: \`${sha}\``,
+              `- 브랜치: \`${context.ref.replace('refs/heads/','')}\``,
+              `- 실행 로그: ${runUrl}`,
+              ``,
+              `\`ui/\` 에서 \`pnpm install --frozen-lockfile\` 후 \`pnpm build\`(tsc+vite)가 실패했습니다.`,
+              `로그를 확인해 수정해 주세요.`,
+            ].join("\n");
+
+            // 같은 제목의 열린 이슈가 있으면 댓글만 추가(스팸 방지)
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: "ci-failure",
+            });
+            const hit = existing.data.find(i => i.title === title);
+            if (hit) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: hit.number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ["ci-failure"],
+              });
+            }
