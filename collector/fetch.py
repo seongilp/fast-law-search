@@ -26,7 +26,7 @@ def _process(client: LawApiClient, cfg: CollectorConfig, meta: RuleMeta) -> str:
     if base.exists() and existing_mst(base) == meta.mst and meta.mst:
         return "skip"
     try:
-        body = client.fetch_body(meta.rule_id)
+        body = client.fetch_body(meta.mst)
         conv = convert(body)
         path = resolve_path(cfg.admrule_root, conv.name, conv.kind, conv.rule_id)
         write_markdown(path, conv.markdown)

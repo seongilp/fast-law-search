@@ -1,7 +1,9 @@
 """law.go.kr OpenAPI 클라이언트. 네트워크 I/O + throttle + retry 전담.
 
 목록: lawSearch.do?target=admrul (display=100, 페이징)
-본문: lawService.do?target=admrul&LID={행정규칙ID}   (★ LID 만 동작)
+본문: lawService.do?target=admrul&ID={행정규칙일련번호}
+      (★ 공식 상세링크가 쓰는 ID=일련번호 가 보편적으로 동작한다.
+       LID=행정규칙ID 는 일부만 되고 다수 훈령/예규에서 실패하므로 쓰지 않는다.)
 """
 from __future__ import annotations
 
@@ -89,11 +91,12 @@ class LawApiClient:
                 return
             page += 1
 
-    def fetch_body(self, rule_id: str) -> dict:
+    def fetch_body(self, mst: str) -> dict:
+        """본문 조회. mst = 행정규칙일련번호 (공식 상세링크의 ID 파라미터)."""
         data = self._get_json(
             _SERVICE,
-            {"OC": self._oc, "target": "admrul", "type": "json", "LID": rule_id},
+            {"OC": self._oc, "target": "admrul", "type": "json", "ID": mst},
         )
         if "AdmRulService" not in data:
-            raise LawApiError(f"본문 없음(LID={rule_id}): {str(data)[:80]}")
+            raise LawApiError(f"본문 없음(ID={mst}): {str(data)[:80]}")
         return data

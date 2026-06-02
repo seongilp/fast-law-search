@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import re
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -47,8 +48,20 @@ def resolve_path(root: Path, name: str, kind: str, rule_id: str) -> Path:
 
 
 def write_markdown(path: Path, content: str) -> None:
-    """임시파일 → rename 으로 원자적 쓰기. 부분 파일 방지."""
+    """고유 임시파일 → rename 으로 원자적 쓰기. 부분 파일 방지.
+
+    임시파일명은 mkstemp 로 고유하게 만든다. 같은 최종 경로를 두 스레드가
+    동시에 쓰더라도 임시파일이 겹치지 않아 os.replace race 가 발생하지 않는다.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(content, encoding="utf-8")
-    os.replace(tmp, path)
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_name, path)
+    except BaseException:
+        if os.path.exists(tmp_name):
+            os.unlink(tmp_name)
+        raise
