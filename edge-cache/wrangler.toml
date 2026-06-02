@@ -1,0 +1,7 @@
+name = "law-search-cache"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# 워커 자체 응답은 캐시하지 않고(엣지 Cache API 를 코드에서 직접 제어),
+# *.workers.dev 로 노출. UI 는 이 호스트로 검색 요청을 보낸다.
+workers_dev = true

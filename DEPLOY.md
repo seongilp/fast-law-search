@@ -2,8 +2,20 @@
 
 ## 라이브
 - **UI**: https://law.zihado.com (Cloudflare Pages, 프로젝트명 `law`, 별칭 fast-law-search.pages.dev)
-- **검색 API**: https://api-law.zihado.com (Cloudflare Tunnel → Droplet Typesense:8108)
+- **검색 엣지 캐시**: https://law-search-cache.zihado.workers.dev (Cloudflare Worker, UI 가 호출)
+- **검색 origin**: https://api-law.zihado.com (Cloudflare Tunnel → Droplet Typesense:8108)
 - **UI 레포**: https://github.com/seongilp/fast-law-search
+
+## 검색 엣지 캐시 (Cloudflare Worker)
+- 소스: `edge-cache/worker.js` + `wrangler.toml`. 배포: `cd edge-cache && npx wrangler deploy`
+- 흐름: 브라우저 → 워커(엣지 Cache API) → api-law.zihado.com → Typesense
+- `multi_search`/`documents/search` 결과를 키(경로+쿼리+본문 해시)로 엣지 캐시,
+  TTL **1시간**. 반복 검색은 드롭릿 안 거치고 엣지 즉시 응답(부하↓, 글로벌 지연↓).
+- 응답 헤더 `x-edge-cache: HIT|MISS` 로 확인. CORS·api키(헤더/쿼리) 그대로 프록시.
+- 신선도: 새벽 재색인 후 최대 1시간 캐시 잔존(법령 변경 드물어 허용). 즉시 반영이 필요하면
+  TTL 을 줄이거나 워커 캐시키에 alias 컬렉션명을 포함하면 됨.
+- UI 전환: `ui/.env.local` 의 `VITE_TYPESENSE_HOST=law-search-cache.zihado.workers.dev`.
+  롤백은 이 값을 `api-law.zihado.com` 으로 되돌리고 재빌드/재배포(코드 DEFAULTS 도 직결값).
 
 ## 구성도
 ```

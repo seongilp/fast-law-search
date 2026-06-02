@@ -19,3 +19,6 @@ ui/.wrangler/
 # misc
 .DS_Store
 .gstack/
+
+# wrangler worker
+edge-cache/.wrangler/
