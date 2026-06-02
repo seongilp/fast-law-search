@@ -1,6 +1,7 @@
+import { useEffect, useState } from "react";
 import { InstantSearch, Configure, useInstantSearch } from "react-instantsearch";
 import { Scale, Command as CommandIcon, Zap } from "lucide-react";
-import { searchClient, COLLECTION } from "@/lib/typesense";
+import { searchClient, COLLECTION, fetchTotalArticles } from "@/lib/typesense";
 import { SearchInput } from "@/components/SearchInput";
 import { StatsBar } from "@/components/StatsBar";
 import { RefinementFacet } from "@/components/RefinementFacet";
@@ -46,6 +47,16 @@ function KbdHint() {
 function Shell() {
   const { indexUiState } = useInstantSearch();
   const hasQuery = Boolean(indexUiState.query?.trim());
+
+  // 전체 조문 수를 라이브로 받아 랜딩 카피에 표기(매일 자동 갱신). 실패해도 무해.
+  const [totalArticles, setTotalArticles] = useState<number | null>(null);
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetchTotalArticles(ctrl.signal)
+      .then(setTotalArticles)
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, []);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -95,7 +106,11 @@ function Shell() {
                 대한민국 법령 검색
               </h1>
               <p className="mt-3 inline-flex items-center justify-center gap-1.5 text-sm text-muted-foreground sm:text-base">
-                법령, 행정규칙 등 모든 검색을 0.01초만에
+                법령·행정규칙{" "}
+                <span className="font-semibold text-foreground">
+                  {(totalArticles ?? 516704).toLocaleString("ko-KR")}
+                </span>
+                개 조문을 0.01초만에
                 <Zap className="size-4 fill-primary text-primary" aria-hidden />
               </p>
             </div>
