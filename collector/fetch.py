@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -18,6 +19,11 @@ from collector.client import EmptyBodyError, LawApiClient, LawApiError, RuleMeta
 from collector.config import CollectorConfig
 from collector.convert import convert
 from collector.write import existing_mst, resolve_path, write_markdown
+
+# 경로 결정(충돌 감지)+쓰기를 원자화한다. 같은 (이름,종류) 의 서로 다른 규칙이
+# 동시에 base 경로로 해석돼 서로를 덮어쓰는 race 를 막는다. 네트워크 조회는
+# 락 밖에서 병렬로 유지되므로 처리량 손실은 무시할 수준(쓰기는 수 마이크로초).
+_write_lock = threading.Lock()
 
 
 def _process(client: LawApiClient, cfg: CollectorConfig, meta: RuleMeta) -> str:
@@ -30,10 +36,11 @@ def _process(client: LawApiClient, cfg: CollectorConfig, meta: RuleMeta) -> str:
     if base.exists() and existing_mst(base) == meta.mst and meta.mst:
         return "skip"
     try:
-        body = client.fetch_body(meta.mst)
+        body = client.fetch_body(meta.mst)   # 느린 네트워크 — 락 밖, 병렬
         conv = convert(body)
-        path = resolve_path(cfg.admrule_root, conv.name, conv.kind, conv.rule_id)
-        write_markdown(path, conv.markdown)
+        with _write_lock:                    # 충돌 감지+쓰기는 원자적으로
+            path = resolve_path(cfg.admrule_root, conv.name, conv.kind, conv.rule_id)
+            write_markdown(path, conv.markdown)
         return "write"
     except EmptyBodyError:
         return "empty"
