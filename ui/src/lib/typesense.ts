@@ -84,6 +84,29 @@ export async function quickSearch(
   return hits.map((h: { document: LawHit }) => h.document);
 }
 
+/**
+ * 전체 코퍼스 규모(인덱싱된 총 조문 수)를 가볍게 조회한다.
+ * 빈 검색(q=*) 의 found 만 받으므로 per_page=0 으로 본문 전송 없음.
+ * 랜딩 카피에 "법령·행정규칙 등 N개 조문" 으로 라이브 표기 → 매일 자동 갱신.
+ */
+export async function fetchTotalArticles(signal?: AbortSignal): Promise<number> {
+  const url = `${TS_PROTO}://${TS_HOST}:${TS_PORT}/multi_search?x-typesense-api-key=${encodeURIComponent(
+    TS_KEY
+  )}`;
+  const res = await fetch(url, {
+    method: "POST",
+    signal,
+    body: JSON.stringify({
+      searches: [
+        { collection: COLLECTION, q: "*", query_by: "content", per_page: 0 },
+      ],
+    }),
+  });
+  if (!res.ok) throw new Error(`Typesense ${res.status}`);
+  const json = await res.json();
+  return Number(json?.results?.[0]?.found ?? 0);
+}
+
 /** 검색 도큐먼트(조문) 타입 */
 export interface LawHit {
   id: string;

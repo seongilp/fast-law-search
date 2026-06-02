@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 원본 법령 레포를 당겨와 무중단(alias) 재색인하고 결과를 텔레그램으로 알린다.
-# flock 으로 동시 실행을 막는다(중복 실행 시 alias/cleanup 충돌 방지).
+# 원본 법령 레포를 당겨오고 + 행정규칙을 수집한 뒤 무중단(alias) 재색인하고
+# 결과를 텔레그램으로 알린다. flock 으로 동시 실행을 막는다.
 set -uo pipefail
 cd /opt/legalize
 
@@ -35,14 +35,29 @@ ${tail_log}"
   exit 1
 }
 
-# 1) 원본 레포 동기화
+# 1) 원본 법령 레포 동기화 (corpus/kr = 법률·시행령·시행규칙 등)
 if [ -d corpus/.git ]; then
   git -C corpus pull --ff-only >>"$LOG" 2>&1 || fail
 else
   git clone --depth 1 https://github.com/legalize-kr/legalize-kr.git corpus >>"$LOG" 2>&1 || fail
 fi
 
+# 1.5) 행정규칙 수집 (corpus/kr 에 추가). 실패해도 색인은 계속한다
+#      (기존 수집분이 corpus/kr 에 남아 있으므로 그 위에 색인됨).
+#      resume: 일련번호(법령MST) 동일하면 본문 조회 없이 스킵 → 변경분만 갱신.
+if [ -f /opt/legalize/.lawoc ]; then
+  LAW_GO_KR_OC=$(cat /opt/legalize/.lawoc) \
+  ADMRULE_ROOT=/opt/legalize/corpus/kr \
+  COLLECT_CONCURRENCY=6 COLLECT_RETRY=3 \
+  PYTHONPATH=/opt/legalize \
+    .venv/bin/python -m collector.fetch >>"$LOG" 2>&1 \
+    || echo "[warn] 행정규칙 수집 일부 실패 — 기존 수집분으로 색인 계속" >>"$LOG"
+else
+  echo "[warn] /opt/legalize/.lawoc 없음 — 행정규칙 수집 건너뜀" >>"$LOG"
+fi
+
 # 2) 무중단 재색인 (index.py 가 alias 전환 + 구컬렉션 정리까지 수행)
+#    corpus/kr 한 루트에 법령 + 행정규칙이 함께 있으므로 통합 색인된다.
 AK=$(cat /opt/legalize/.adminkey)
 TYPESENSE_HOST=localhost TYPESENSE_PORT=8108 TYPESENSE_PROTOCOL=http \
   TYPESENSE_API_KEY="$AK" TYPESENSE_COLLECTION=kr_laws \
@@ -57,7 +72,7 @@ fi
 DOCS=$(grep -E '\[done\]' "$LOG" | tail -1 | grep -oE '조문 도큐먼트 [0-9]+' | grep -oE '[0-9]+' || echo "?")
 ALIAS_LINE=$(grep -E '\[alias\]' "$LOG" | tail -1 | tr -d '\r')
 
-tg "✅ 법령 색인 완료
+tg "✅ 법령·행정규칙 색인 완료
 $(NOW)
 조문 ${DOCS}건 인덱싱
 ${ALIAS_LINE}

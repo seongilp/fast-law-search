@@ -4,8 +4,12 @@ ui/.env.local
 
 # python
 .venv/
+.venv-col/
 __pycache__/
 *.pyc
+
+# collector 생성물 (본문 미제공 규칙 명단 — 실행 시 재생성)
+collector/no_body.txt
 
 # node / build
 ui/node_modules/

@@ -1,4 +1,4 @@
-.PHONY: help up down logs venv index reindex web all
+.PHONY: help up down logs venv index reindex web all col-venv collect collect-smoke
 
 help:
 	@echo "대한민국 법령 초고속 검색 (Typesense)"
@@ -8,6 +8,8 @@ help:
 	@echo "  make venv      인덱서 파이썬 의존성 설치(.venv)"
 	@echo "  make index     전체 법령 인덱싱(컬렉션 재생성)"
 	@echo "  make reindex   기존 컬렉션 유지하고 upsert (--keep)"
+	@echo "  make collect   행정규칙 전량 수집 → kr/ (변경분만)"
+	@echo "  make collect-smoke  행정규칙 5건만 수집(스모크)"
 	@echo "  make web       웹 UI 로컬 서버 (http://localhost:5173)"
 	@echo "  make all       up → venv → index → web"
 
@@ -34,6 +36,17 @@ index: venv
 
 reindex: venv
 	.venv/bin/python indexer/index.py --keep
+
+col-venv:
+	python3 -m venv .venv-col
+	.venv-col/bin/pip install -q -r collector/requirements.txt
+	@echo "[ok] .venv-col 준비 완료"
+
+collect: col-venv
+	PYTHONPATH=. .venv-col/bin/python -m collector.fetch
+
+collect-smoke: col-venv
+	PYTHONPATH=. .venv-col/bin/python -m collector.fetch --limit 5
 
 ui:
 	@[ -d ui/node_modules ] || (cd ui && pnpm install)

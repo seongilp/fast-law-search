@@ -1,32 +1,47 @@
 # 배포 구성 (운영 메모)
 
 ## 라이브
-- **UI**: https://fast-law-search.pages.dev (Cloudflare Pages)
-- **검색 API**: https://146-190-96-6.nip.io (DigitalOcean Droplet, Typesense + Caddy)
+- **UI**: https://law.zihado.com (Cloudflare Pages, 프로젝트명 `law`, 별칭 fast-law-search.pages.dev)
+- **검색 API**: https://api-law.zihado.com (Cloudflare Tunnel → Droplet Typesense:8108)
 - **UI 레포**: https://github.com/seongilp/fast-law-search
 
 ## 구성도
 ```
-브라우저 ──HTTPS──> Cloudflare Pages (정적 UI, dist)
+브라우저 ──HTTPS──> law.zihado.com (Cloudflare Pages, 정적 UI/dist)
    │
-   └──HTTPS──> nip.io 도메인 ──> DO Droplet
-                                  ├─ Caddy (자동 TLS, :443 → typesense:8108)
-                                  └─ Typesense (조문 204,817건, alias=kr_laws)
+   └──HTTPS──> api-law.zihado.com ──> Cloudflare Tunnel
+                                          │ (cloudflared 컨테이너, .tuntoken)
+                                          ▼
+                                      DO Droplet  typesense:8108
+                                      (법령+행정규칙 조문 ~517,000건, alias=kr_laws)
 ```
+> ⚠️ 이전 메모의 "Caddy + nip.io(146-190-96-6.nip.io)" 구성은 **사용하지 않는다**.
+> 실제 외부 노출은 **Cloudflare Tunnel(cloudflared)** 이고 공개 주소는 `api-law.zihado.com`.
+> Droplet 8108 은 호스트에 바인딩되어 있으나 외부 방화벽으로 막고 터널 경유만 허용.
+
+> **행정규칙 수집 (2026-06-03, Claude 가 SSH 로 Droplet 에 직접 배포)**:
+> law.go.kr OpenAPI 에서 현행 행정규칙(고시·훈령·예규·세칙 등) ~23,584건을
+> 수집해 `corpus/kr` 에 법령과 함께 색인. 수집기 `collector/` + OC 키 `.lawoc`
+> 를 Droplet 에 올리고 `reindex.sh` 에 수집 단계를 통합했다(이하 참조).
 
 ## DigitalOcean Droplet
 - 이름: `legalize-typesense`, 리전 sgp1, 2GB/1vCPU ($12/월)
 - IP: `146.190.96.6`
 - 앱 경로: `/opt/legalize/`
-  - `docker-compose.yml` — typesense + caddy (admin key 가 여기 있음, 외부 노출 금지)
-  - `Caddyfile` — nip.io 호스트 자동 HTTPS
-  - `corpus/` — 원본 법령 레포(`legalize-kr/legalize-kr`) clone
-  - `reindex.sh` — 무중단 재색인 스크립트
-- 방화벽(ufw): 22/80/443 만 개방. 8108 은 외부 차단(Caddy 경유만).
+  - `docker-compose.yml` — **typesense 단독** (admin key·`--enable-cors`, 외부 노출 금지)
+  - `cloudflared` 컨테이너 — Cloudflare Tunnel(토큰 `.tuntoken`)로 api-law.zihado.com 노출
+    (compose 가 아니라 별도 `docker run` 으로 기동되어 있음)
+  - `corpus/` — 원본 법령 레포(`legalize-kr/legalize-kr`) clone + 행정규칙 수집분(untracked)
+  - `collector/` — 행정규칙 수집기 (search 레포의 `collector/` 사본)
+  - `.lawoc` — law.go.kr OpenAPI OC 키 (chmod 600, git·코드 미포함)
+  - `.adminkey` / `.telegram` / `.tuntoken` — 운영 비밀 (chmod 600)
+  - `reindex.sh` — 법령 pull + 행정규칙 수집 + 무중단 재색인 스크립트
+- 8108 은 호스트 바인딩되어 있으나 외부 방화벽 차단 → 실제 접근은 Cloudflare Tunnel 경유.
 
 ## 자동 재색인
 - Droplet cron: 매일 03:00 KST → `reindex.sh`
-  (원본 레포 `git pull` → `index.py --alias` 무중단 alias 전환)
+  (법령 레포 `git pull` → 행정규칙 `collector.fetch` 수집(resume) → `index.py --alias` 무중단 전환)
+- 행정규칙 수집은 non-fatal: law.go.kr 일시 장애 시에도 기존 수집분으로 색인 계속.
 - 수동: `ssh root@146.190.96.6 /opt/legalize/reindex.sh`
 - **flock** 으로 동시 실행 방지(`.reindex.lock`). 중복 실행 시 alias/cleanup
   충돌로 실패(RC=2)하던 문제를 막는다.
@@ -48,8 +63,10 @@
 ```bash
 cd ui
 # .env.local 에 운영 Typesense 값이 들어 있어야 함 (.env.example 참고)
+#   VITE_TYPESENSE_HOST=api-law.zihado.com / PORT=443 / PROTOCOL=https
 pnpm build
-npx wrangler pages deploy dist --project-name fast-law-search --branch main
+# ★ Pages 프로젝트명은 'law' (도메인 fast-law-search.pages.dev / law.zihado.com)
+npx wrangler pages deploy dist --project-name law --branch main --commit-dirty=true
 ```
 
 ## Cloudflare Pages 빌드 프리셋 관련
