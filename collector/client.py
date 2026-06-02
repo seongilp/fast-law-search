@@ -27,7 +27,15 @@ class RuleMeta:
 
 
 class LawApiError(RuntimeError):
-    pass
+    """네트워크/HTTP/파싱 등 재시도 가치가 있는 일시적 오류."""
+
+
+class EmptyBodyError(LawApiError):
+    """API 가 구조화 본문(AdmRulService)을 제공하지 않는 규칙.
+
+    일부 행정규칙은 JSON 본문이 빈 `{}` 또는 오류 뷰어 HTML 로만 응답한다
+    (소스 데이터 한계). 재시도해도 동일하므로 '정상 스킵'으로 분류한다.
+    """
 
 
 class LawApiClient:
@@ -98,5 +106,6 @@ class LawApiClient:
             {"OC": self._oc, "target": "admrul", "type": "json", "ID": mst},
         )
         if "AdmRulService" not in data:
-            raise LawApiError(f"본문 없음(ID={mst}): {str(data)[:80]}")
+            # 빈 {} → 소스가 본문을 제공하지 않는 규칙. 재시도 무의미 → 정상 스킵.
+            raise EmptyBodyError(f"본문 미제공(ID={mst})")
         return data
