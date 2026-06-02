@@ -107,7 +107,7 @@ function Shell() {
               </h1>
               <p className="mt-3 inline-flex items-center justify-center gap-1.5 text-sm text-muted-foreground/80 sm:text-base">
                 법령·행정규칙{" "}
-                <span className="font-semibold text-foreground/70">
+                <span className="font-semibold text-muted-foreground">
                   {(totalArticles ?? 516704).toLocaleString("ko-KR")}
                 </span>
                 개 조문을 0.01초만에
