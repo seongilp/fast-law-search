@@ -8,6 +8,15 @@ def test_resolve_basic(tmp_path):
     assert p == tmp_path / "전자금융감독규정" / "고시.md"
 
 
+def test_resolve_normalizes_middot(tmp_path):
+    # 목록 API 의 원본 이름(·, U+00B7)과 본문 정규화 이름(ㆍ, U+318D)이
+    # 같은 경로로 해석돼야 resume(동일 MST 스킵)가 동작한다.
+    raw = resolve_path(tmp_path, "10·29참사위원회운영규정", "훈령", "1")
+    normalized = resolve_path(tmp_path, "10ㆍ29참사위원회운영규정", "훈령", "1")
+    assert raw == normalized
+    assert raw == tmp_path / "10ㆍ29참사위원회운영규정" / "훈령.md"
+
+
 def test_resolve_collision_suffixes_rule_id(tmp_path):
     # 같은 경로를 다른 행정규칙ID 가 이미 점유
     d = tmp_path / "전자금융감독규정"

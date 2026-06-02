@@ -8,11 +8,14 @@ from pathlib import Path
 import yaml
 
 _FRONT = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+# 가운뎃점 정규화: · (U+00B7) → ㆍ (U+318D). convert.py 와 동일해야
+# write 경로와 resume 체크 경로가 일치한다(목록 API 는 원본 ·, 본문은 정규화 후).
+_DOT = str.maketrans({"·": "ㆍ"})
 
 
 def _dir_name(name: str) -> str:
-    """행정규칙명 → 디렉터리명(공백 제거). law.go.kr URL 규칙과 동일."""
-    return re.sub(r"\s+", "", name)
+    """행정규칙명 → 디렉터리명(가운뎃점 정규화 + 공백 제거). law.go.kr URL 규칙과 동일."""
+    return re.sub(r"\s+", "", name.translate(_DOT))
 
 
 def _frontmatter(path: Path) -> dict:
