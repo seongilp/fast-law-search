@@ -58,15 +58,23 @@ fi
 
 # 2) 무중단 재색인 (index.py 가 alias 전환 + 구컬렉션 정리까지 수행)
 #    corpus/kr 한 루트에 법령 + 행정규칙이 함께 있으므로 통합 색인된다.
+#    일시적 실패(네트워크/일시 부하)에 대비해 1회 자동 재시도한다.
+#    성공 판정은 최종 마커 [alias] (alias 전환 완료) 기준.
 AK=$(cat /opt/legalize/.adminkey)
-TYPESENSE_HOST=localhost TYPESENSE_PORT=8108 TYPESENSE_PROTOCOL=http \
-  TYPESENSE_API_KEY="$AK" TYPESENSE_COLLECTION=kr_laws \
-  LAW_ROOT=/opt/legalize/corpus/kr \
-  .venv/bin/python indexer/index.py --alias >>"$LOG" 2>&1 || fail
+do_index() {
+  TYPESENSE_HOST=localhost TYPESENSE_PORT=8108 TYPESENSE_PROTOCOL=http \
+    TYPESENSE_API_KEY="$AK" TYPESENSE_COLLECTION=kr_laws \
+    LAW_ROOT=/opt/legalize/corpus/kr \
+    .venv/bin/python indexer/index.py --alias >>"$LOG" 2>&1 \
+    && grep -q '\[alias\]' "$LOG"
+}
 
-# 3) 성공 판정: [done] 라인이 있어야 진짜 성공
-if ! grep -q '\[done\]' "$LOG"; then
-  fail
+if ! do_index; then
+  echo "[warn] 색인 1차 실패 — 120초 후 재시도" >>"$LOG"
+  tg "⚠️ 법령 색인 1차 실패 → 재시도
+$(NOW)"
+  sleep 120
+  do_index || fail
 fi
 
 DOCS=$(grep -E '\[done\]' "$LOG" | tail -1 | grep -oE '조문 도큐먼트 [0-9]+' | grep -oE '[0-9]+' || echo "?")
