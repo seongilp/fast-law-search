@@ -1,5 +1,5 @@
 import { InstantSearch, Configure, useInstantSearch } from "react-instantsearch";
-import { Scale, Command as CommandIcon } from "lucide-react";
+import { Scale, Command as CommandIcon, Zap } from "lucide-react";
 import { searchClient, COLLECTION } from "@/lib/typesense";
 import { SearchInput } from "@/components/SearchInput";
 import { StatsBar } from "@/components/StatsBar";
@@ -94,8 +94,9 @@ function Shell() {
               <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
                 대한민국 법령 검색
               </h1>
-              <p className="mt-3 text-sm text-muted-foreground sm:text-base">
-                약 20만 개 조문을 즉시 검색합니다.
+              <p className="mt-3 inline-flex items-center justify-center gap-1.5 text-sm text-muted-foreground sm:text-base">
+                법령, 행정규칙 등 모든 검색을 0.01초만에
+                <Zap className="size-4 fill-primary text-primary" aria-hidden />
               </p>
             </div>
           )}
