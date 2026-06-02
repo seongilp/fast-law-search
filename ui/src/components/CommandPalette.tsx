@@ -37,9 +37,17 @@ interface Row {
 }
 
 /** ⌘K / Ctrl+K 로 여는 라이브 검색 팔레트(키보드 네비게이션 직접 구현). */
-export function CommandPalette() {
+/**
+ * open/onOpenChange 는 부모(App)가 소유한다. ⌘K 토글 리스너도 App 에 있어,
+ * 이 컴포넌트는 첫 ⌘K 시점에 lazy 로 로드된다(초기 번들에서 cmdk 청크 제외).
+ */
+interface CommandPaletteProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export default function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const { setIndexUiState } = useInstantSearch();
-  const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [hits, setHits] = useState<LawHit[]>([]);
   const [loading, setLoading] = useState(false);
@@ -47,18 +55,6 @@ export function CommandPalette() {
   const [active, setActive] = useState(0);
   const debounced = useDebounce(input, 180);
   const listRef = useRef<HTMLDivElement>(null);
-
-  // 단축키 토글
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setOpen((v) => !v);
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
 
   // 열 때 초기화
   useEffect(() => {
@@ -95,7 +91,7 @@ export function CommandPalette() {
     if (!trimmed) return;
     setRecent(pushRecent(trimmed));
     setIndexUiState((s) => ({ ...s, query: trimmed, page: 1 }));
-    setOpen(false);
+    onOpenChange(false);
   }
 
   // 현재 상태에 따른 선택 가능 행 목록 구성
@@ -203,7 +199,7 @@ export function CommandPalette() {
   let lastGroup = "";
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="overflow-hidden p-0" showClose={false}>
         <DialogTitle className="sr-only">법령 검색</DialogTitle>
         <DialogDescription className="sr-only">

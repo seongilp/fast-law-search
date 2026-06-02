@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { InstantSearch, Configure, useInstantSearch } from "react-instantsearch";
 import { Scale, Command as CommandIcon, Zap } from "lucide-react";
 import { searchClient, COLLECTION, fetchTotalArticles } from "@/lib/typesense";
@@ -8,11 +8,29 @@ import { RefinementFacet } from "@/components/RefinementFacet";
 import { ActiveFilters } from "@/components/ActiveFilters";
 import { HitsList } from "@/components/HitsList";
 import { SearchPagination } from "@/components/SearchPagination";
-import { CommandPalette } from "@/components/CommandPalette";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/lib/utils";
 
+// ⌘K 팔레트는 첫 호출 전까지 초기 번들에서 제외(별도 청크 lazy 로드).
+const CommandPalette = lazy(() => import("@/components/CommandPalette"));
+
 export default function App() {
+  // ⌘K 토글 + 마운트 상태를 여기서 소유한다. 첫 ⌘K 에 mount→chunk 로드→열림.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteMounted, setPaletteMounted] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteMounted(true);
+        setPaletteOpen((v) => !v);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
     <InstantSearch
       searchClient={searchClient}
@@ -21,7 +39,11 @@ export default function App() {
       routing
     >
       <Configure hitsPerPage={12} />
-      <CommandPalette />
+      {paletteMounted && (
+        <Suspense fallback={null}>
+          <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+        </Suspense>
+      )}
       <Shell />
     </InstantSearch>
   );
