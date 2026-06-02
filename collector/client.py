@@ -1,0 +1,99 @@
+"""law.go.kr OpenAPI 클라이언트. 네트워크 I/O + throttle + retry 전담.
+
+목록: lawSearch.do?target=admrul (display=100, 페이징)
+본문: lawService.do?target=admrul&LID={행정규칙ID}   (★ LID 만 동작)
+"""
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass
+from typing import Iterator
+
+import requests
+
+_SEARCH = "https://www.law.go.kr/DRF/lawSearch.do"
+_SERVICE = "https://www.law.go.kr/DRF/lawService.do"
+_MIN_INTERVAL = 0.15  # 요청 간 최소 간격(초) — 정부 API 보호
+
+
+@dataclass(frozen=True)
+class RuleMeta:
+    rule_id: str   # 행정규칙ID
+    mst: str       # 행정규칙일련번호
+    name: str
+    kind: str
+
+
+class LawApiError(RuntimeError):
+    pass
+
+
+class LawApiClient:
+    def __init__(self, oc: str, retry: int = 3, timeout: int = 30) -> None:
+        if not oc:
+            raise LawApiError("LAW_GO_KR_OC 가 비어 있습니다 (.env 확인)")
+        self._oc = oc
+        self._retry = retry
+        self._timeout = timeout
+        self._session = requests.Session()
+        self._last = 0.0
+
+    def _throttle(self) -> None:
+        gap = time.monotonic() - self._last
+        if gap < _MIN_INTERVAL:
+            time.sleep(_MIN_INTERVAL - gap)
+        self._last = time.monotonic()
+
+    def _get_json(self, url: str, params: dict) -> dict:
+        last_exc: Exception | None = None
+        for attempt in range(self._retry):
+            self._throttle()
+            try:
+                r = self._session.get(url, params=params, timeout=self._timeout)
+                if r.status_code != 200:
+                    raise LawApiError(f"HTTP {r.status_code}")
+                return r.json()
+            except (requests.RequestException, ValueError, LawApiError) as exc:
+                last_exc = exc
+                time.sleep(min(2 ** attempt, 8))  # 지수 백오프
+        raise LawApiError(f"요청 실패({self._retry}회): {url} :: {last_exc}")
+
+    def total_count(self) -> int:
+        data = self._get_json(
+            _SEARCH,
+            {"OC": self._oc, "target": "admrul", "type": "json", "display": 1, "page": 1},
+        )
+        return int(data.get("AdmRulSearch", {}).get("totalCnt", 0))
+
+    def list_rules(self) -> Iterator[RuleMeta]:
+        """현행 행정규칙 전체를 페이징하며 메타를 순차 산출."""
+        page = 1
+        while True:
+            data = self._get_json(
+                _SEARCH,
+                {"OC": self._oc, "target": "admrul", "type": "json",
+                 "display": 100, "page": page},
+            )
+            rows = data.get("AdmRulSearch", {}).get("admrul", [])
+            rows = [rows] if isinstance(rows, dict) else (rows or [])
+            if not rows:
+                return
+            for r in rows:
+                yield RuleMeta(
+                    rule_id=str(r.get("행정규칙ID") or "").strip(),
+                    mst=str(r.get("행정규칙일련번호") or "").strip(),
+                    name=str(r.get("행정규칙명") or "").strip(),
+                    kind=str(r.get("행정규칙종류") or "").strip(),
+                )
+            if len(rows) < 100:
+                return
+            page += 1
+
+    def fetch_body(self, rule_id: str) -> dict:
+        data = self._get_json(
+            _SERVICE,
+            {"OC": self._oc, "target": "admrul", "type": "json", "LID": rule_id},
+        )
+        if "AdmRulService" not in data:
+            raise LawApiError(f"본문 없음(LID={rule_id}): {str(data)[:80]}")
+        return data
