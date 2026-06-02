@@ -105,13 +105,13 @@ function Shell() {
               <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
                 대한민국 법령 검색
               </h1>
-              <p className="mt-3 inline-flex items-center justify-center gap-1.5 text-sm text-muted-foreground sm:text-base">
+              <p className="mt-3 inline-flex items-center justify-center gap-1.5 text-sm text-muted-foreground/80 sm:text-base">
                 법령·행정규칙{" "}
-                <span className="font-semibold text-foreground">
+                <span className="font-semibold text-foreground/70">
                   {(totalArticles ?? 516704).toLocaleString("ko-KR")}
                 </span>
                 개 조문을 0.01초만에
-                <Zap className="size-4 fill-primary text-primary" aria-hidden />
+                <Zap className="size-4 fill-primary/80 text-primary/80" aria-hidden />
               </p>
             </div>
           )}
