@@ -7,6 +7,7 @@ import {
   COLLECTION,
   PREC_COLLECTION,
   fetchTotalArticles,
+  fetchTotalPrecedents,
 } from "@/lib/typesense";
 import { SearchInput } from "@/components/SearchInput";
 import { StatsBar } from "@/components/StatsBar";
@@ -107,15 +108,17 @@ function Shell({
   const { indexUiState } = useInstantSearch();
   const hasQuery = Boolean(indexUiState.query?.trim());
 
-  // 전체 조문 수를 라이브로 받아 랜딩 카피에 표기(매일 자동 갱신). 실패해도 무해.
-  const [totalArticles, setTotalArticles] = useState<number | null>(null);
+  // 전체 건수를 라이브로 받아 랜딩 카피에 표기(매일 자동 갱신). 실패해도 무해.
+  // 탭(법령/판례)에 따라 조문 수 또는 판례 수를 받는다.
+  const [total, setTotal] = useState<number | null>(null);
   useEffect(() => {
     const ctrl = new AbortController();
-    fetchTotalArticles(ctrl.signal)
-      .then(setTotalArticles)
+    const fetcher = mode === "prec" ? fetchTotalPrecedents : fetchTotalArticles;
+    fetcher(ctrl.signal)
+      .then(setTotal)
       .catch(() => {});
     return () => ctrl.abort();
-  }, []);
+  }, [mode]);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -162,14 +165,26 @@ function Shell({
                 <Scale className="size-8 text-primary" />
               </div>
               <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-                대한민국 법령 검색
+                {mode === "prec" ? "대한민국 판례 검색" : "대한민국 법령 검색"}
               </h1>
               <p className="mt-3 inline-flex items-center justify-center gap-1.5 text-sm text-muted-foreground/80 sm:text-base">
-                법령·행정규칙{" "}
-                <span className="font-semibold text-muted-foreground">
-                  {(totalArticles ?? 516704).toLocaleString("ko-KR")}
-                </span>
-                개 조문을 0.01초만에
+                {mode === "prec" ? (
+                  <>
+                    대법원 판례{" "}
+                    <span className="font-semibold text-muted-foreground">
+                      {(total ?? 68175).toLocaleString("ko-KR")}
+                    </span>
+                    건을 0.01초만에
+                  </>
+                ) : (
+                  <>
+                    법령·행정규칙{" "}
+                    <span className="font-semibold text-muted-foreground">
+                      {(total ?? 516704).toLocaleString("ko-KR")}
+                    </span>
+                    개 조문을 0.01초만에
+                  </>
+                )}
                 <Zap className="size-4 fill-primary/80 text-primary/80" aria-hidden />
               </p>
             </div>
@@ -200,7 +215,7 @@ function Shell({
       {hasQuery ? (
         <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <StatsBar />
+            <StatsBar mode={mode} />
             <ActiveFilters />
           </div>
 

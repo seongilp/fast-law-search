@@ -63,11 +63,18 @@ def parse_file(path: Path, prec_root: Path) -> dict:
 
     decided = _to_int_date(meta.get("선고일자"))
     rel = path.relative_to(prec_root)
+    case_no = str(meta.get("사건번호") or "").strip()
+    # law.go.kr 판례 영구링크는 사건번호 형식. (일련번호 형식은 에러 페이지가 뜬다)
+    source_url = (
+        f"https://www.law.go.kr/판례/({case_no})"
+        if case_no
+        else str(meta.get("출처") or "").strip()
+    )
 
     return {
         "serial": str(meta.get("판례일련번호") or "").strip(),
         "case_name": str(meta.get("제목") or "").strip(),
-        "case_no": str(meta.get("사건번호") or "").strip(),
+        "case_no": case_no,
         "court": str(meta.get("법원명") or "").strip(),
         "case_type": str(meta.get("사건종류명") or "").strip(),
         "judgment_type": str(meta.get("판결유형") or "").strip(),
@@ -77,6 +84,6 @@ def parse_file(path: Path, prec_root: Path) -> dict:
         "summary": sec.get("판결요지", ""),
         "refs_article": _join_refs(meta.get("참조조문")) or sec.get("참조조문", ""),
         "body": sec.get("판례내용", ""),
-        "source_url": str(meta.get("출처") or "").strip(),
+        "source_url": source_url,
         "file_path": str(rel),
     }

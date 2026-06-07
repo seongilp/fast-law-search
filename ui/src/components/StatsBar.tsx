@@ -1,8 +1,10 @@
 import { useStats } from "react-instantsearch";
 import { Zap } from "lucide-react";
+import type { Mode } from "@/components/ModeTabs";
 
-export function StatsBar() {
+export function StatsBar({ mode = "laws" }: { mode?: Mode }) {
   const { nbHits, processingTimeMS, query } = useStats();
+  const unit = mode === "prec" ? "개 판례" : "개 조문";
 
   if (!query) {
     return (
@@ -17,7 +19,7 @@ export function StatsBar() {
       <span className="font-semibold text-foreground">
         {nbHits.toLocaleString("ko-KR")}
       </span>
-      <span>개 조문</span>
+      <span>{unit}</span>
       <span className="text-border">·</span>
       <Zap className="size-3.5 text-primary" />
       <span>{processingTimeMS}ms</span>

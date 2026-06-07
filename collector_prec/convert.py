@@ -108,7 +108,8 @@ def convert(body: dict) -> Converted:
         "참조조문": _refs(svc.get("참조조문")),
         "참조판례": _refs(svc.get("참조판례")),
         "상태": "시행",
-        "출처": f"https://www.law.go.kr/판례/({serial})",
+        # law.go.kr 판례 영구링크는 사건번호 형식(일련번호 형식은 에러 페이지).
+        "출처": f"https://www.law.go.kr/판례/({case_no})",
         "데이터구분": "판례",
     }
     # 빈 리스트 키는 제거(노이즈 방지)

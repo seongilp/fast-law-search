@@ -58,11 +58,13 @@ const precAdapter = new TypesenseInstantSearchAdapter({
     cacheSearchResultsForSeconds: 120,
   },
   additionalSearchParameters: {
-    query_by: "case_name,holding,summary,body,refs_article",
-    query_by_weights: "5,4,4,2,1",
+    // 사건번호(case_no)도 검색 대상 — "2025도6707" 같은 사건번호로 바로 찾게.
+    query_by: "case_name,case_no,holding,summary,body,refs_article",
+    query_by_weights: "5,5,4,4,2,1",
     highlight_full_fields: "case_name,holding,summary",
     highlight_affix_num_tokens: 16,
     num_typos: "1",
+    // 관련도 우선(정확히 일치하는 사건이 최상단), 동점이면 최신 선고일.
     sort_by: "_text_match:desc,decided_date:desc",
   },
 });
@@ -146,6 +148,25 @@ export async function fetchTotalArticles(signal?: AbortSignal): Promise<number> 
     body: JSON.stringify({
       searches: [
         { collection: COLLECTION, q: "*", query_by: "content", per_page: 0 },
+      ],
+    }),
+  });
+  if (!res.ok) throw new Error(`Typesense ${res.status}`);
+  const json = await res.json();
+  return Number(json?.results?.[0]?.found ?? 0);
+}
+
+/** 인덱싱된 전체 판례 건수를 가볍게 조회한다(랜딩 카피용). */
+export async function fetchTotalPrecedents(signal?: AbortSignal): Promise<number> {
+  const url = `${TS_PROTO}://${TS_HOST}:${TS_PORT}/multi_search?x-typesense-api-key=${encodeURIComponent(
+    TS_KEY
+  )}`;
+  const res = await fetch(url, {
+    method: "POST",
+    signal,
+    body: JSON.stringify({
+      searches: [
+        { collection: PREC_COLLECTION, q: "*", query_by: "case_name", per_page: 0 },
       ],
     }),
   });
