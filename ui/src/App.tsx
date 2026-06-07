@@ -27,33 +27,34 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteMounted, setPaletteMounted] = useState(false);
 
-  // URL ?tab=prec 로 모드 초기화 + 동기화
-  const initial =
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("tab") === "prec"
-      ? "prec"
-      : "laws";
-  const [mode, setMode] = useState<Mode>(initial as Mode);
+  // URL(?tab=prec, {index}[query]) 로 초기 모드·검색어 복원(공유 링크 대응).
+  const sp0 =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search)
+      : new URLSearchParams();
+  const initialMode: Mode = sp0.get("tab") === "prec" ? "prec" : "laws";
+  const initialIdx = initialMode === "prec" ? PREC_COLLECTION : COLLECTION;
+  const [mode, setMode] = useState<Mode>(initialMode);
+  // 현재 활성 인덱스의 검색어를 추적한다(Shell 이 콜백으로 보고).
+  // 탭 전환 시 이 값을 새 인덱스의 initialUiState 로 넘겨 검색어를 유지한다.
+  // (URL 을 직접 옮기는 방식은 InstantSearch 라우터의 마운트 시 read/write 와
+  //  레이스가 나서 간헐적으로 첫 화면으로 리셋됐다 → initialUiState 로 결정론화)
+  const [currentQuery, setCurrentQuery] = useState<string>(
+    sp0.get(`${initialIdx}[query]`) ?? ""
+  );
 
   const onModeChange = (m: Mode) => {
     if (m === mode) return;
-    // 검색어를 다음 탭으로 넘긴다. InstantSearch routing 은 검색 상태를
-    // 인덱스명별(`{index}[query]`)로 URL 에 저장하므로, 탭 전환 시 현재 인덱스의
-    // 검색어를 다음 인덱스 키로 옮겨야 빈 화면으로 리셋되지 않고 바로 전환된다.
-    // 패싯/필터는 컬렉션마다 속성이 달라 이전하지 않는다(검색어만 유지).
+    // 떠나는 인덱스의 URL 라우팅 파라미터를 정리(잔류 방지). 검색어는 state 로 유지.
     const fromIdx = mode === "prec" ? PREC_COLLECTION : COLLECTION;
-    const toIdx = m === "prec" ? PREC_COLLECTION : COLLECTION;
     const url = new URL(window.location.href);
-    const sp = url.searchParams;
-    const q = sp.get(`${fromIdx}[query]`) ?? "";
-    [...sp.keys()].forEach((k) => {
-      if (k.startsWith(`${fromIdx}[`)) sp.delete(k);
+    [...url.searchParams.keys()].forEach((k) => {
+      if (k.startsWith(`${fromIdx}[`)) url.searchParams.delete(k);
     });
-    if (q) sp.set(`${toIdx}[query]`, q);
-    if (m === "prec") sp.set("tab", "prec");
-    else sp.delete("tab");
+    if (m === "prec") url.searchParams.set("tab", "prec");
+    else url.searchParams.delete("tab");
     window.history.replaceState(null, "", url.toString());
-    setMode(m);
+    setMode(m); // currentQuery 가 새 인덱스 initialUiState 로 전달됨
   };
 
   useEffect(() => {
@@ -76,6 +77,7 @@ export default function App() {
       key={mode}
       searchClient={client}
       indexName={indexName}
+      initialUiState={{ [indexName]: { query: currentQuery } }}
       future={{ preserveSharedStateOnUnmount: true }}
       routing
     >
@@ -85,7 +87,11 @@ export default function App() {
           <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
         </Suspense>
       )}
-      <Shell mode={mode} onModeChange={onModeChange} />
+      <Shell
+        mode={mode}
+        onModeChange={onModeChange}
+        onQueryChange={setCurrentQuery}
+      />
     </InstantSearch>
   );
 }
@@ -114,12 +120,20 @@ function KbdHint() {
 function Shell({
   mode,
   onModeChange,
+  onQueryChange,
 }: {
   mode: Mode;
   onModeChange: (m: Mode) => void;
+  onQueryChange: (q: string) => void;
 }) {
   const { indexUiState } = useInstantSearch();
-  const hasQuery = Boolean(indexUiState.query?.trim());
+  const query = indexUiState.query ?? "";
+  const hasQuery = Boolean(query.trim());
+
+  // 현재 검색어를 App 으로 끌어올린다(탭 전환 시 새 인덱스로 넘기기 위함).
+  useEffect(() => {
+    onQueryChange(query);
+  }, [query, onQueryChange]);
 
   // 전체 건수를 라이브로 받아 랜딩 카피에 표기(매일 자동 갱신). 실패해도 무해.
   // 탭(법령/판례)에 따라 조문 수 또는 판례 수를 받는다.
