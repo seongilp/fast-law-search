@@ -15,7 +15,13 @@ import sys
 from pathlib import Path
 
 _FRONT = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
-_REPO = Path(__file__).resolve().parent.parent.parent     # law.zihado.com 루트
+# 기본값: law.zihado.com 루트(로컬 중첩 구조 기준).
+# CI 등 레이아웃이 다를 때는 LEGALIZE_KR_REPO 환경변수로 재정의 가능.
+_REPO = (
+    Path(os.environ["LEGALIZE_KR_REPO"]).resolve()
+    if os.environ.get("LEGALIZE_KR_REPO")
+    else Path(__file__).resolve().parent.parent.parent
+)
 _PREC = _REPO / "prec"
 
 
