@@ -1,20 +1,19 @@
-"""prec/ 의 신규(미추적/수정) 판례 .md 를 선고일자 커밋으로 1건씩 기록한다.
+"""prec/ 의 신규(미추적/수정) 판례 .md 를 단일 커밋으로 기록한다.
 
-판례는 불변 → 1판례=1커밋. author/committer date = 선고일자.
-Git 은 1970-01-01 이전을 지원하지 않으므로 epoch 로 클램프(frontmatter 가 진실).
+판례는 불변 문서이고 수만 건을 한 번에 적재하므로, 파일마다 커밋하지 않고
+**한 번의 수집 = 한 커밋**으로 묶는다. 선고일자·사건번호 등 날짜/메타는 각
+파일의 frontmatter 가 진실의 원천이므로 커밋 author date 로 분리할 필요가 없다.
 
 사용:
-    python -m collector_prec.commit            # prec/ 미커밋 파일 전부 커밋
+    python -m collector_prec.commit            # prec/ 미커밋 파일을 한 커밋으로
 """
 from __future__ import annotations
 
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
 
-_FRONT = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 # 기본값: law.zihado.com 루트(로컬 중첩 구조 기준).
 # CI 등 레이아웃이 다를 때는 LEGALIZE_KR_REPO 환경변수로 재정의 가능.
 _REPO = (
@@ -25,75 +24,45 @@ _REPO = (
 _PREC = _REPO / "prec"
 
 
-def _field(text: str, key: str) -> str:
-    m = _FRONT.match(text)
-    block = m.group(1) if m else ""
-    fm = re.search(rf"^{re.escape(key)}:\s*(.+)$", block, re.MULTILINE)
-    return fm.group(1).strip().strip('"') if fm else ""
-
-
-def _git(args: list[str], env: dict | None = None) -> str:
+def _git(args: list[str]) -> str:
     out = subprocess.run(
         ["git", "-C", str(_REPO), *args],
         check=True, capture_output=True, text=True,
-        env={**os.environ, **(env or {})},
+        env={**os.environ},
     )
     return out.stdout.strip()
 
 
-def _pending() -> list[str]:
-    """prec/ 아래 미추적 + 수정된 .md 경로(레포 상대)."""
+def _pending_count() -> int:
+    """prec/ 아래 미추적 + 수정된 .md 파일 수."""
     status = _git(["-c", "core.quotePath=false", "status", "--porcelain", "-u", "--", "prec"])
-    paths: list[str] = []
-    for line in status.splitlines():
-        path = line[3:].strip().strip('"')
-        if path.endswith(".md"):
-            paths.append(path)
-    return sorted(paths)
-
-
-def _commit_one(rel_path: str) -> None:
-    text = (_REPO / rel_path).read_text(encoding="utf-8")
-    name = _field(text, "제목") or "판례"
-    case_no = _field(text, "사건번호")
-    case_type = _field(text, "사건종류명")
-    jtype = _field(text, "판결유형")
-    serial = _field(text, "판례일련번호")
-    decided = _field(text, "선고일자")  # YYYY-MM-DD
-
-    # Git 은 epoch 이전 날짜 미지원 → 클램프
-    date_iso = f"{decided}T00:00:00" if decided and decided >= "1970-01-01" else "1970-01-01T00:00:00"
-
-    subject = f"판례: {name} [대법원 {case_no}]"
-    bodylines = [
-        f"선고일자: {decided} | 사건종류: {case_type} | 판결유형: {jtype}",
-        f"판례일련번호: {serial}",
-        f"출처: https://www.law.go.kr/판례/({serial})",
-    ]
-    message = subject + "\n\n" + "\n".join(bodylines) + "\n"
-
-    _git(["add", "--", rel_path])
-    env = {"GIT_AUTHOR_DATE": date_iso, "GIT_COMMITTER_DATE": date_iso}
-    _git(["commit", "-q", "-m", message, "--", rel_path], env=env)
+    return sum(1 for line in status.splitlines() if line[3:].strip().strip('"').endswith(".md"))
 
 
 def main() -> int:
-    pending = _pending()
-    if not pending:
+    if not _PREC.is_dir():
+        print("[commit] prec/ 디렉터리가 없습니다", file=sys.stderr)
+        return 1
+
+    count = _pending_count()
+    if count == 0:
         print("[commit] 커밋할 판례 없음")
         return 0
-    print(f"[commit] 대상 {len(pending)}건")
-    failures = 0
-    for i, rel in enumerate(pending, 1):
-        try:
-            _commit_one(rel)
-        except subprocess.CalledProcessError as exc:
-            failures += 1
-            print(f"  [fail] {rel}: {exc.stderr}", file=sys.stderr)
-        if i % 200 == 0:
-            print(f"  [progress] {i}/{len(pending)}")
-    print(f"[done] 커밋 완료 {len(pending) - failures}건 (실패 {failures}건)")
-    return 0 if failures == 0 else 1
+
+    message = (
+        f"판례: 대법원 판례 {count}건 추가\n\n"
+        "선고일자·사건번호 등 메타는 각 파일 frontmatter 를 참조하세요.\n"
+        "출처: 국가법령정보센터 OpenAPI (https://open.law.go.kr)\n"
+    )
+    try:
+        _git(["add", "--", "prec"])
+        _git(["commit", "-q", "-m", message, "--", "prec"])
+    except subprocess.CalledProcessError as exc:
+        print(f"[fail] 커밋 실패: {exc.stderr}", file=sys.stderr)
+        return 1
+
+    print(f"[done] 판례 {count}건을 단일 커밋으로 기록")
+    return 0
 
 
 if __name__ == "__main__":
