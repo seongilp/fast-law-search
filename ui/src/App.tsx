@@ -27,35 +27,33 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteMounted, setPaletteMounted] = useState(false);
 
-  // URL(?tab=prec, {index}[query]) 로 초기 모드·검색어 복원(공유 링크 대응).
+  // URL(?tab=prec&q=...) 로 초기 모드·검색어 복원(공유 링크).
+  // InstantSearch 의 자동 routing 은 쓰지 않는다 — 탭 전환(remount)과 라우터의
+  // 마운트 시 URL read/write 가 레이스를 일으켜 반복 전환 시 검색어가 날아갔다.
+  // 대신 검색어는 React state(currentQuery)+initialUiState 로 결정론적으로 넘기고,
+  // URL 은 우리가 단일 작성자로 ?tab&q 만 동기화한다(레이스 없음).
   const sp0 =
     typeof window !== "undefined"
       ? new URLSearchParams(window.location.search)
       : new URLSearchParams();
   const initialMode: Mode = sp0.get("tab") === "prec" ? "prec" : "laws";
-  const initialIdx = initialMode === "prec" ? PREC_COLLECTION : COLLECTION;
   const [mode, setMode] = useState<Mode>(initialMode);
-  // 현재 활성 인덱스의 검색어를 추적한다(Shell 이 콜백으로 보고).
-  // 탭 전환 시 이 값을 새 인덱스의 initialUiState 로 넘겨 검색어를 유지한다.
-  // (URL 을 직접 옮기는 방식은 InstantSearch 라우터의 마운트 시 read/write 와
-  //  레이스가 나서 간헐적으로 첫 화면으로 리셋됐다 → initialUiState 로 결정론화)
-  const [currentQuery, setCurrentQuery] = useState<string>(
-    sp0.get(`${initialIdx}[query]`) ?? ""
-  );
+  const [currentQuery, setCurrentQuery] = useState<string>(sp0.get("q") ?? "");
 
   const onModeChange = (m: Mode) => {
     if (m === mode) return;
-    // 떠나는 인덱스의 URL 라우팅 파라미터를 정리(잔류 방지). 검색어는 state 로 유지.
-    const fromIdx = mode === "prec" ? PREC_COLLECTION : COLLECTION;
+    setMode(m); // currentQuery 가 새 인덱스 initialUiState 로 전달됨(검색어 유지)
+  };
+
+  // 검색어/탭을 URL 에 동기화(단일 작성자 → 레이스 없음). 공유 링크용.
+  useEffect(() => {
     const url = new URL(window.location.href);
-    [...url.searchParams.keys()].forEach((k) => {
-      if (k.startsWith(`${fromIdx}[`)) url.searchParams.delete(k);
-    });
-    if (m === "prec") url.searchParams.set("tab", "prec");
+    if (currentQuery) url.searchParams.set("q", currentQuery);
+    else url.searchParams.delete("q");
+    if (mode === "prec") url.searchParams.set("tab", "prec");
     else url.searchParams.delete("tab");
     window.history.replaceState(null, "", url.toString());
-    setMode(m); // currentQuery 가 새 인덱스 initialUiState 로 전달됨
-  };
+  }, [currentQuery, mode]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -79,7 +77,6 @@ export default function App() {
       indexName={indexName}
       initialUiState={{ [indexName]: { query: currentQuery } }}
       future={{ preserveSharedStateOnUnmount: true }}
-      routing
     >
       <Configure hitsPerPage={12} />
       {paletteMounted && (
