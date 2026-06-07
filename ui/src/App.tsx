@@ -36,11 +36,24 @@ export default function App() {
   const [mode, setMode] = useState<Mode>(initial as Mode);
 
   const onModeChange = (m: Mode) => {
-    setMode(m);
+    if (m === mode) return;
+    // 검색어를 다음 탭으로 넘긴다. InstantSearch routing 은 검색 상태를
+    // 인덱스명별(`{index}[query]`)로 URL 에 저장하므로, 탭 전환 시 현재 인덱스의
+    // 검색어를 다음 인덱스 키로 옮겨야 빈 화면으로 리셋되지 않고 바로 전환된다.
+    // 패싯/필터는 컬렉션마다 속성이 달라 이전하지 않는다(검색어만 유지).
+    const fromIdx = mode === "prec" ? PREC_COLLECTION : COLLECTION;
+    const toIdx = m === "prec" ? PREC_COLLECTION : COLLECTION;
     const url = new URL(window.location.href);
-    if (m === "prec") url.searchParams.set("tab", "prec");
-    else url.searchParams.delete("tab");
+    const sp = url.searchParams;
+    const q = sp.get(`${fromIdx}[query]`) ?? "";
+    [...sp.keys()].forEach((k) => {
+      if (k.startsWith(`${fromIdx}[`)) sp.delete(k);
+    });
+    if (q) sp.set(`${toIdx}[query]`, q);
+    if (m === "prec") sp.set("tab", "prec");
+    else sp.delete("tab");
     window.history.replaceState(null, "", url.toString());
+    setMode(m);
   };
 
   useEffect(() => {
