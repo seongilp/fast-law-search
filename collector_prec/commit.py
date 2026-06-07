@@ -22,7 +22,7 @@ _PREC = _REPO / "prec"
 def _field(text: str, key: str) -> str:
     m = _FRONT.match(text)
     block = m.group(1) if m else ""
-    fm = re.search(rf"^{key}:\s*(.+)$", block, re.MULTILINE)
+    fm = re.search(rf"^{re.escape(key)}:\s*(.+)$", block, re.MULTILINE)
     return fm.group(1).strip().strip('"') if fm else ""
 
 
@@ -77,15 +77,17 @@ def main() -> int:
         print("[commit] 커밋할 판례 없음")
         return 0
     print(f"[commit] 대상 {len(pending)}건")
+    failures = 0
     for i, rel in enumerate(pending, 1):
         try:
             _commit_one(rel)
         except subprocess.CalledProcessError as exc:
+            failures += 1
             print(f"  [fail] {rel}: {exc.stderr}", file=sys.stderr)
         if i % 200 == 0:
             print(f"  [progress] {i}/{len(pending)}")
-    print(f"[done] 커밋 완료 {len(pending)}건")
-    return 0
+    print(f"[done] 커밋 완료 {len(pending) - failures}건 (실패 {failures}건)")
+    return 0 if failures == 0 else 1
 
 
 if __name__ == "__main__":

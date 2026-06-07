@@ -55,7 +55,7 @@ def _clean(v) -> str:
 
 
 def _refs(v) -> list[str]:
-    """참조조문/참조판례 문자열 → 리스트. '/' 와 ',' 로 분리."""
+    """참조조문/참조판례 문자열 → 리스트. '/' 와 줄바꿈으로 분리."""
     text = _clean(v)
     if not text:
         return []

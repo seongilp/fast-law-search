@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass
 from typing import Iterator
@@ -42,12 +43,14 @@ class PrecApiClient:
         self._timeout = timeout
         self._session = requests.Session()
         self._last = 0.0
+        self._lock = threading.Lock()
 
     def _throttle(self) -> None:
-        gap = time.monotonic() - self._last
-        if gap < _MIN_INTERVAL:
-            time.sleep(_MIN_INTERVAL - gap)
-        self._last = time.monotonic()
+        with self._lock:
+            gap = time.monotonic() - self._last
+            if gap < _MIN_INTERVAL:
+                time.sleep(_MIN_INTERVAL - gap)
+            self._last = time.monotonic()
 
     def _get_json(self, url: str, params: dict) -> dict:
         last_exc: Exception | None = None
