@@ -1,4 +1,4 @@
-.PHONY: help up down logs venv index reindex web all col-venv collect collect-smoke
+.PHONY: help up down logs venv index reindex web all col-venv collect collect-smoke prec-venv collect-prec commit-prec index-prec
 
 help:
 	@echo "대한민국 법령 초고속 검색 (Typesense)"
@@ -8,10 +8,13 @@ help:
 	@echo "  make venv      인덱서 파이썬 의존성 설치(.venv)"
 	@echo "  make index     전체 법령 인덱싱(컬렉션 재생성)"
 	@echo "  make reindex   기존 컬렉션 유지하고 upsert (--keep)"
-	@echo "  make collect   행정규칙 전량 수집 → kr/ (변경분만)"
+	@echo "  make collect        행정규칙 전량 수집 → kr/ (변경분만)"
 	@echo "  make collect-smoke  행정규칙 5건만 수집(스모크)"
-	@echo "  make web       웹 UI 로컬 서버 (http://localhost:5173)"
-	@echo "  make all       up → venv → index → web"
+	@echo "  make collect-prec   대법원 판례 전량 수집(신규만) → prec/"
+	@echo "  make commit-prec    수집된 판례를 선고일자 커밋으로 기록"
+	@echo "  make index-prec     판례 Typesense 색인(무중단 alias)"
+	@echo "  make web            웹 UI 로컬 서버 (http://localhost:5173)"
+	@echo "  make all            up → venv → index → web"
 
 up:
 	@[ -f .env ] || cp .env.example .env
@@ -47,6 +50,20 @@ collect: col-venv
 
 collect-smoke: col-venv
 	PYTHONPATH=. .venv-col/bin/python -m collector.fetch --limit 5
+
+prec-venv:
+	python3 -m venv .venv-prec
+	.venv-prec/bin/pip install -q -r collector_prec/requirements.txt
+	@echo "[ok] .venv-prec 준비 완료"
+
+collect-prec: prec-venv  ## 대법원 판례 전량 수집(신규만)
+	PYTHONPATH=. .venv-prec/bin/python -m collector_prec.fetch
+
+commit-prec:  ## 수집된 판례를 선고일자 커밋으로 기록
+	PYTHONPATH=. .venv-prec/bin/python -m collector_prec.commit
+
+index-prec: venv  ## 판례 Typesense 색인(무중단 alias)
+	.venv/bin/python indexer/index_prec.py --alias
 
 ui:
 	@[ -d ui/node_modules ] || (cd ui && pnpm install)
