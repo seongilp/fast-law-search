@@ -10,8 +10,11 @@ name: 판례 증분 수집
 #   LEGALIZE_KR_TOKEN — legalize-kr/legalize-kr 쓰기 권한이 있는 PAT
 
 on:
-  schedule:
-    - cron: "30 19 * * *"   # 매일 04:30 KST (UTC 19:30)
+  # ⚠️ 스케줄 비활성: seongilp 가 legalize-kr/legalize-kr 에 push 권한을 얻기 전까지는
+  #    매일 밤 헛수집 후 push 403 으로 실패하므로 자동 실행을 막아둔다.
+  #    권한 부여 후 아래 schedule 주석을 풀면 일일 자동 수집이 켜진다.
+  # schedule:
+  #   - cron: "30 19 * * *"   # 매일 04:30 KST (UTC 19:30)
   workflow_dispatch: {}
 
 permissions:
