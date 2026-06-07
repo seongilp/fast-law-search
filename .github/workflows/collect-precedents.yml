@@ -55,7 +55,7 @@ jobs:
           PREC_ROOT: ${{ github.workspace }}/legalize-kr/prec
         run: python -m collector_prec.fetch
 
-      - name: 선고일자 커밋
+      - name: 신규 판례 단일 커밋
         working-directory: fast-law-search
         env:
           LAW_GO_KR_OC: ${{ secrets.LAW_GO_KR_OC }}
