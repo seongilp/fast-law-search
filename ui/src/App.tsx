@@ -1,7 +1,13 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { InstantSearch, Configure, useInstantSearch } from "react-instantsearch";
 import { Scale, Command as CommandIcon, Zap } from "lucide-react";
-import { searchClient, COLLECTION, fetchTotalArticles } from "@/lib/typesense";
+import {
+  searchClient,
+  precSearchClient,
+  COLLECTION,
+  PREC_COLLECTION,
+  fetchTotalArticles,
+} from "@/lib/typesense";
 import { SearchInput } from "@/components/SearchInput";
 import { StatsBar } from "@/components/StatsBar";
 import { RefinementFacet } from "@/components/RefinementFacet";
@@ -9,6 +15,7 @@ import { ActiveFilters } from "@/components/ActiveFilters";
 import { HitsList } from "@/components/HitsList";
 import { SearchPagination } from "@/components/SearchPagination";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ModeTabs, type Mode } from "@/components/ModeTabs";
 import { cn } from "@/lib/utils";
 
 // ⌘K 팔레트는 첫 호출 전까지 초기 번들에서 제외(별도 청크 lazy 로드).
@@ -18,6 +25,22 @@ export default function App() {
   // ⌘K 토글 + 마운트 상태를 여기서 소유한다. 첫 ⌘K 에 mount→chunk 로드→열림.
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteMounted, setPaletteMounted] = useState(false);
+
+  // URL ?tab=prec 로 모드 초기화 + 동기화
+  const initial =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("tab") === "prec"
+      ? "prec"
+      : "laws";
+  const [mode, setMode] = useState<Mode>(initial as Mode);
+
+  const onModeChange = (m: Mode) => {
+    setMode(m);
+    const url = new URL(window.location.href);
+    if (m === "prec") url.searchParams.set("tab", "prec");
+    else url.searchParams.delete("tab");
+    window.history.replaceState(null, "", url.toString());
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -31,10 +54,14 @@ export default function App() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
+  const client = mode === "prec" ? precSearchClient : searchClient;
+  const indexName = mode === "prec" ? PREC_COLLECTION : COLLECTION;
+
   return (
     <InstantSearch
-      searchClient={searchClient}
-      indexName={COLLECTION}
+      key={mode}
+      searchClient={client}
+      indexName={indexName}
       future={{ preserveSharedStateOnUnmount: true }}
       routing
     >
@@ -44,7 +71,7 @@ export default function App() {
           <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
         </Suspense>
       )}
-      <Shell />
+      <Shell mode={mode} onModeChange={onModeChange} />
     </InstantSearch>
   );
 }
@@ -65,8 +92,18 @@ function KbdHint() {
  * 인스턴스로 같은 트리 위치(key="search")에 유지**한다. 두 뷰에 각각 input 을
  * 두면 첫 글자 입력 시 화면 전환으로 input 이 remount 되어 iOS 한글 IME 조합이
  * 깨진다(예: "음" → "ㅇㅡㅁ"). 위치를 고정해 remount 를 막는다.
+ *
+ * mode/onModeChange 는 InstantSearch 컬렉션 전환용. key={mode} 로 InstantSearch
+ * 를 재마운트하므로 Shell 도 재마운트되지만, 이는 탭 클릭(의도적 액션)에만
+ * 발생하므로 타이핑 중 IME 파괴 문제와는 무관하다.
  */
-function Shell() {
+function Shell({
+  mode,
+  onModeChange,
+}: {
+  mode: Mode;
+  onModeChange: (m: Mode) => void;
+}) {
   const { indexUiState } = useInstantSearch();
   const hasQuery = Boolean(indexUiState.query?.trim());
 
@@ -145,6 +182,18 @@ function Shell() {
           {/* 결과 화면: 토글을 검색창 오른쪽 바깥에 인라인 배치(겹침 없음) */}
           {hasQuery && <ThemeToggle />}
         </div>
+
+        {/* 법령/판례 탭: 랜딩과 결과 화면 모두 검색 영역 아래에 표시 */}
+        <div
+          className={cn(
+            "flex justify-center",
+            hasQuery
+              ? "mx-auto w-full max-w-6xl px-3 pb-2 sm:px-6"
+              : "mt-4 w-full"
+          )}
+        >
+          <ModeTabs mode={mode} onChange={onModeChange} />
+        </div>
       </div>
 
       {/* 결과 본문 */}
@@ -157,23 +206,34 @@ function Shell() {
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[240px_1fr]">
             <aside className="space-y-2 lg:sticky lg:top-20 lg:self-start lg:space-y-4">
-              <RefinementFacet
-                attribute="law_type"
-                title="법령구분"
-                searchable
-                searchPlaceholder="구분 검색"
-              />
-              <RefinementFacet
-                attribute="ministry"
-                title="소관부처"
-                searchable
-                searchPlaceholder="부처 검색"
-              />
-              <RefinementFacet attribute="status" title="상태" limit={6} />
+              {mode === "prec" ? (
+                <>
+                  <RefinementFacet attribute="court" title="법원" />
+                  <RefinementFacet attribute="case_type" title="사건종류" />
+                  <RefinementFacet attribute="decided_year" title="선고연도" />
+                  <RefinementFacet attribute="judgment_type" title="판결유형" />
+                </>
+              ) : (
+                <>
+                  <RefinementFacet
+                    attribute="law_type"
+                    title="법령구분"
+                    searchable
+                    searchPlaceholder="구분 검색"
+                  />
+                  <RefinementFacet
+                    attribute="ministry"
+                    title="소관부처"
+                    searchable
+                    searchPlaceholder="부처 검색"
+                  />
+                  <RefinementFacet attribute="status" title="상태" limit={6} />
+                </>
+              )}
             </aside>
 
             <main>
-              <HitsList />
+              <HitsList mode={mode} />
               <SearchPagination />
             </main>
           </div>

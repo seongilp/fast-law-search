@@ -1,11 +1,11 @@
 import { useHits, useInstantSearch } from "react-instantsearch";
-import type { Hit } from "instantsearch.js";
 import { FileSearch } from "lucide-react";
 import { LawHitCard } from "./LawHitCard";
-import type { LawHit } from "@/lib/typesense";
+import { PrecedentHitCard } from "./PrecedentHitCard";
+import type { Mode } from "@/components/ModeTabs";
 
-export function HitsList() {
-  const { items } = useHits<LawHit>();
+export function HitsList({ mode }: { mode: Mode }) {
+  const { items } = useHits();
   const { indexUiState } = useInstantSearch();
   const query = indexUiState.query ?? "";
 
@@ -19,8 +19,9 @@ export function HitsList() {
           검색 결과가 없습니다
         </h3>
         <p className="mt-1.5 max-w-sm text-sm text-muted-foreground">
-          "{query}" 와 일치하는 조문을 찾지 못했습니다. 다른 키워드로 시도해
-          보세요.
+          "{query}" 와 일치하는{" "}
+          {mode === "prec" ? "판례" : "조문"}를 찾지 못했습니다. 다른
+          키워드로 시도해 보세요.
         </p>
       </div>
     );
@@ -28,9 +29,15 @@ export function HitsList() {
 
   return (
     <div className="space-y-3">
-      {items.map((hit: Hit<LawHit>) => (
-        <LawHitCard key={hit.objectID} hit={hit} />
-      ))}
+      {items.map((hit) =>
+        mode === "prec" ? (
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          <PrecedentHitCard key={hit.objectID} hit={hit as any} />
+        ) : (
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          <LawHitCard key={hit.objectID} hit={hit as any} />
+        )
+      )}
     </div>
   );
 }
