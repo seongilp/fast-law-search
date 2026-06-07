@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # 원본 법령 레포를 당겨오고 + 행정규칙을 수집한 뒤 무중단(alias) 재색인하고
 # 결과를 텔레그램으로 알린다. flock 으로 동시 실행을 막는다.
+#
+# 법령(kr_laws) + 판례(kr_precedents) 두 컬렉션을 색인한다.
+# 판례 데이터(corpus/prec)는 GitHub Actions(fast-law-search)가 수집해
+# legalize-kr 에 push 하고, 여기서는 corpus pull 로 받아 색인만 한다.
 set -uo pipefail
 cd /opt/legalize
 
@@ -35,7 +39,7 @@ ${tail_log}"
   exit 1
 }
 
-# 1) 원본 법령 레포 동기화 (corpus/kr = 법률·시행령·시행규칙 등)
+# 1) 원본 법령 레포 동기화 (corpus/kr = 법률·시행령·시행규칙 등, corpus/prec = 판례)
 if [ -d corpus/.git ]; then
   git -C corpus pull --ff-only >>"$LOG" 2>&1 || fail
 else
@@ -77,12 +81,35 @@ $(NOW)"
   do_index || fail
 fi
 
+# 법령 결과는 판례 색인 전에 먼저 캡처한다.
+# (판례 index_prec 가 동일한 [done]/[alias] 마커를 LOG 에 덧붙이므로 순서가 중요)
 DOCS=$(grep -E '\[done\]' "$LOG" | tail -1 | grep -oE '조문 도큐먼트 [0-9]+' | grep -oE '[0-9]+' || echo "?")
 ALIAS_LINE=$(grep -E '\[alias\]' "$LOG" | tail -1 | tr -d '\r')
 
-tg "✅ 법령·행정규칙 색인 완료
+# 2.5) 판례 무중단 재색인 (corpus/prec → kr_precedents alias)
+#      corpus pull 로 받은 prec/ 를 별도 컬렉션으로 색인한다.
+#      데이터가 아직 없으면(초기) 건너뛰고, 실패해도 법령 색인은 이미 완료이므로 경고만.
+PREC_DOCS="-"
+if [ -d /opt/legalize/corpus/prec ]; then
+  do_index_prec() {
+    TYPESENSE_HOST=localhost TYPESENSE_PORT=8108 TYPESENSE_PROTOCOL=http \
+      TYPESENSE_API_KEY="$AK" PREC_COLLECTION=kr_precedents \
+      PREC_ROOT=/opt/legalize/corpus/prec \
+      .venv/bin/python indexer/index_prec.py --alias >>"$LOG" 2>&1 \
+      && grep -q "alias.*kr_precedents" "$LOG"
+  }
+  if do_index_prec; then
+    PREC_DOCS=$(grep -E '\[done\] 파일' "$LOG" | tail -1 | grep -oE '인덱싱 성공 [0-9]+' | grep -oE '[0-9]+' || echo "?")
+  else
+    echo "[warn] 판례 색인 실패" >>"$LOG"
+    tg "⚠️ 판례 색인 실패
+$(NOW)"
+  fi
+fi
+
+tg "✅ 법령·행정규칙·판례 색인 완료
 $(NOW)
-조문 ${DOCS}건 인덱싱
+조문 ${DOCS}건 / 판례 ${PREC_DOCS}건
 ${ALIAS_LINE}
 🔎 https://law.zihado.com"
 
