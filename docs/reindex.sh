@@ -2,9 +2,10 @@
 # 원본 법령 레포를 당겨오고 + 행정규칙을 수집한 뒤 무중단(alias) 재색인하고
 # 결과를 텔레그램으로 알린다. flock 으로 동시 실행을 막는다.
 #
-# 법령(kr_laws) + 판례(kr_precedents) 두 컬렉션을 색인한다.
-# 판례 데이터(corpus/prec)는 GitHub Actions(fast-law-search)가 수집해
-# legalize-kr 에 push 하고, 여기서는 corpus pull 로 받아 색인만 한다.
+# 컬렉션 2개를 색인한다:
+#   kr_laws       ← corpus(legalize-kr/legalize-kr) 의 법령·행정규칙
+#   kr_precedents ← fast-law-search(seongilp) 의 판례 데이터(prec/)
+# 판례 데이터·코드는 fast-law-search 한 repo 에 있고 GitHub Actions 가 수집·push 한다.
 set -uo pipefail
 cd /opt/legalize
 
@@ -39,16 +40,14 @@ ${tail_log}"
   exit 1
 }
 
-# 1) 원본 법령 레포 동기화 (corpus/kr = 법률·시행령·시행규칙 등, corpus/prec = 판례)
+# 1) 원본 법령 레포 동기화 (corpus/kr = 법률·시행령·시행규칙 등)
 if [ -d corpus/.git ]; then
   git -C corpus pull --ff-only >>"$LOG" 2>&1 || fail
 else
   git clone --depth 1 https://github.com/legalize-kr/legalize-kr.git corpus >>"$LOG" 2>&1 || fail
 fi
 
-# 1.5) 행정규칙 수집 (corpus/kr 에 추가). 실패해도 색인은 계속한다
-#      (기존 수집분이 corpus/kr 에 남아 있으므로 그 위에 색인됨).
-#      resume: 일련번호(법령MST) 동일하면 본문 조회 없이 스킵 → 변경분만 갱신.
+# 1.5) 행정규칙 수집 (corpus/kr 에 추가). 실패해도 색인은 계속한다.
 if [ -f /opt/legalize/.lawoc ]; then
   LAW_GO_KR_OC=$(cat /opt/legalize/.lawoc) \
   ADMRULE_ROOT=/opt/legalize/corpus/kr \
@@ -60,10 +59,7 @@ else
   echo "[warn] /opt/legalize/.lawoc 없음 — 행정규칙 수집 건너뜀" >>"$LOG"
 fi
 
-# 2) 무중단 재색인 (index.py 가 alias 전환 + 구컬렉션 정리까지 수행)
-#    corpus/kr 한 루트에 법령 + 행정규칙이 함께 있으므로 통합 색인된다.
-#    일시적 실패(네트워크/일시 부하)에 대비해 1회 자동 재시도한다.
-#    성공 판정은 최종 마커 [alias] (alias 전환 완료) 기준.
+# 2) 법령 무중단 재색인 (index.py 가 alias 전환 + 구컬렉션 정리까지 수행)
 AK=$(cat /opt/legalize/.adminkey)
 do_index() {
   TYPESENSE_HOST=localhost TYPESENSE_PORT=8108 TYPESENSE_PROTOCOL=http \
@@ -81,21 +77,30 @@ $(NOW)"
   do_index || fail
 fi
 
-# 법령 결과는 판례 색인 전에 먼저 캡처한다.
-# (판례 index_prec 가 동일한 [done]/[alias] 마커를 LOG 에 덧붙이므로 순서가 중요)
+# 법령 결과는 판례 색인 전에 먼저 캡처한다(이후 [done]/[alias] 마커가 판례 것으로 덮임).
 DOCS=$(grep -E '\[done\]' "$LOG" | tail -1 | grep -oE '조문 도큐먼트 [0-9]+' | grep -oE '[0-9]+' || echo "?")
 ALIAS_LINE=$(grep -E '\[alias\]' "$LOG" | tail -1 | tr -d '\r')
 
-# 2.5) 판례 무중단 재색인 (corpus/prec → kr_precedents alias)
-#      corpus pull 로 받은 prec/ 를 별도 컬렉션으로 색인한다.
-#      데이터가 아직 없으면(초기) 건너뛰고, 실패해도 법령 색인은 이미 완료이므로 경고만.
+# 2.5) 판례 무중단 재색인 (fast-law-search 의 prec/ → kr_precedents)
+#      데이터·인덱서 코드를 fast-law-search 에서 받는다.
+FLS=/opt/legalize/fls
+if [ -d "$FLS/.git" ]; then
+  git -C "$FLS" pull --ff-only >>"$LOG" 2>&1 || echo "[warn] fast-law-search pull 실패" >>"$LOG"
+else
+  git clone --depth 1 https://github.com/seongilp/fast-law-search.git "$FLS" >>"$LOG" 2>&1 \
+    || echo "[warn] fast-law-search clone 실패" >>"$LOG"
+fi
+
+# RAM 가드: 법령+판례 동시 로드 ~1.8GiB(+alias 중 스파이크). 4GB 미만 머신에선
+# OOM 위험이 커서 판례 색인을 건너뛴다. 메모리 증설 후 자동으로 활성화된다.
+MEM_KB=$(awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
 PREC_DOCS="-"
-if [ -d /opt/legalize/corpus/prec ]; then
+if [ -d "$FLS/prec" ] && [ "${MEM_KB:-0}" -ge 3500000 ]; then
   do_index_prec() {
     TYPESENSE_HOST=localhost TYPESENSE_PORT=8108 TYPESENSE_PROTOCOL=http \
       TYPESENSE_API_KEY="$AK" PREC_COLLECTION=kr_precedents \
-      PREC_ROOT=/opt/legalize/corpus/prec \
-      .venv/bin/python indexer/index_prec.py --alias >>"$LOG" 2>&1 \
+      PREC_ROOT="$FLS/prec" \
+      .venv/bin/python "$FLS/indexer/index_prec.py" --alias >>"$LOG" 2>&1 \
       && grep -q "alias.*kr_precedents" "$LOG"
   }
   if do_index_prec; then
@@ -105,6 +110,9 @@ if [ -d /opt/legalize/corpus/prec ]; then
     tg "⚠️ 판례 색인 실패
 $(NOW)"
   fi
+elif [ -d "$FLS/prec" ]; then
+  echo "[warn] RAM 부족(${MEM_KB}KB < 3.5GB) — 판례 색인 건너뜀(증설 후 자동 활성)" >>"$LOG"
+  PREC_DOCS="skip(RAM)"
 fi
 
 tg "✅ 법령·행정규칙·판례 색인 완료
