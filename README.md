@@ -103,3 +103,19 @@ python indexer/index.py --keep   # 기존 유지하고 upsert(증분)
   노출됩니다. 운영에서는 Typesense의 **scoped search-only API key**
   (`documents:search` 권한만)를 발급해 사용하세요.
 - 관리(쓰기) 키(`TYPESENSE_API_KEY`)는 인덱서에서만 사용하고 외부에 노출하지 마세요.
+
+## 판례 수집·색인
+
+```bash
+cd search
+make collect-prec   # 대법원 판례 전량 수집(신규만) → prec/
+make commit-prec    # 선고일자 커밋으로 기록
+make index-prec     # Typesense kr_precedents 컬렉션 색인(무중단)
+```
+
+UI 상단의 **법령 / 판례 탭**으로 두 컬렉션을 전환 검색합니다
+(`?tab=prec` 로 링크 공유 가능).
+
+판례 데이터(`prec/`)는 [legalize-kr/legalize-kr](https://github.com/legalize-kr/legalize-kr)
+저장소에 저장됩니다. 일일 자동 수집은 `.github/workflows/collect-precedents.yml`
+워크플로가 담당하며, `LAW_GO_KR_OC` 와 `LEGALIZE_KR_TOKEN` 시크릿이 필요합니다.
