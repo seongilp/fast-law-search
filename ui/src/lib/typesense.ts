@@ -41,6 +41,53 @@ const adapter = new TypesenseInstantSearchAdapter({
 
 export const searchClient = adapter.searchClient;
 
+// ── 판례(precedents) ─────────────────────────────────────────────
+export const PREC_COLLECTION =
+  (env.VITE_TYPESENSE_PREC_COLLECTION as string) || "kr_precedents";
+
+const precAdapter = new TypesenseInstantSearchAdapter({
+  server: {
+    apiKey: (env.VITE_TYPESENSE_SEARCH_KEY as string) || DEFAULTS.searchKey,
+    nodes: [
+      {
+        host: (env.VITE_TYPESENSE_HOST as string) || DEFAULTS.host,
+        port: Number(env.VITE_TYPESENSE_PORT) || DEFAULTS.port,
+        protocol: (env.VITE_TYPESENSE_PROTOCOL as string) || DEFAULTS.protocol,
+      },
+    ],
+    cacheSearchResultsForSeconds: 120,
+  },
+  additionalSearchParameters: {
+    query_by: "case_name,holding,summary,body,refs_article",
+    query_by_weights: "5,4,4,2,1",
+    highlight_full_fields: "case_name,holding,summary",
+    highlight_affix_num_tokens: 16,
+    num_typos: "1",
+    sort_by: "_text_match:desc,decided_date:desc",
+  },
+});
+
+export const precSearchClient = precAdapter.searchClient;
+
+/** 판례 검색 도큐먼트 타입 */
+export interface PrecHit {
+  id: string;
+  serial?: string;
+  case_name: string;
+  case_no?: string;
+  court?: string;
+  case_type?: string;
+  judgment_type?: string;
+  decided_date: number;
+  decided_year?: string;
+  holding?: string;
+  summary?: string;
+  body?: string;
+  refs_article?: string;
+  source_url?: string;
+  file_path?: string;
+}
+
 const TS_HOST = (env.VITE_TYPESENSE_HOST as string) || DEFAULTS.host;
 const TS_PORT = Number(env.VITE_TYPESENSE_PORT) || DEFAULTS.port;
 const TS_PROTO = (env.VITE_TYPESENSE_PROTOCOL as string) || DEFAULTS.protocol;
