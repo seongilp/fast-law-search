@@ -64,8 +64,9 @@ const precAdapter = new TypesenseInstantSearchAdapter({
     highlight_full_fields: "case_name,holding,summary",
     highlight_affix_num_tokens: 16,
     num_typos: "1",
-    // 관련도 우선(정확히 일치하는 사건이 최상단), 동점이면 최신 선고일.
-    sort_by: "_text_match:desc,decided_date:desc",
+    // 최신 선고일 우선(같은 날짜면 관련도). case_no 가 검색되므로 사건번호
+    // 검색은 결과가 1건으로 좁혀져 정렬과 무관하게 정확하다.
+    sort_by: "decided_date:desc,_text_match:desc",
   },
 });
 
