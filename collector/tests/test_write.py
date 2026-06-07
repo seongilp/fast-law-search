@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from collector.write import existing_mst, resolve_path, write_markdown
+from collector.write import MAX_DIR_BYTES, _dir_name, existing_mst, resolve_path, write_markdown
 
 
 def test_resolve_basic(tmp_path):
@@ -32,6 +32,43 @@ def test_resolve_same_rule_reuses_path(tmp_path):
     write_markdown(d / "고시.md", "---\n법령ID: '21828'\n---\n# x\n")
     p = resolve_path(tmp_path, "전자금융감독규정", "고시", "21828")
     assert p == d / "고시.md"
+
+
+def test_dir_name_caps_byte_length(tmp_path):
+    # 리눅스 ext4 는 경로 컴포넌트당 255바이트 제한이 있고 한글은 UTF-8 3바이트.
+    # 긴 행정규칙명/판례명이 그대로 디렉터리명이 되면 checkout 이 깨진다.
+    long_name = "가" * 400  # 1200 bytes
+    d = _dir_name(long_name)
+    assert len(d.encode("utf-8")) <= MAX_DIR_BYTES
+    # 멀티바이트 문자가 중간에 잘려 깨지지 않아야 한다
+    d.encode("utf-8").decode("utf-8")
+
+
+def test_dir_name_truncation_is_deterministic_and_unique(tmp_path):
+    # 같은 이름 → 같은 디렉터리(resume/dedup 동작 보장)
+    a = "관세법" + "가" * 400
+    b = "관세법" + "나" * 400
+    assert _dir_name(a) == _dir_name(a)
+    # 접두사가 같아도 서로 다른 긴 이름은 다른 디렉터리로 (충돌 방지)
+    assert _dir_name(a) != _dir_name(b)
+
+
+def test_dir_name_idempotent_on_already_normalized(tmp_path):
+    # 이미 _dir_name 을 거친 값에 다시 적용해도 같은 결과(마이그레이션 일관성)
+    long_name = "10·29" + "가" * 400
+    once = _dir_name(long_name)
+    assert _dir_name(once) == once
+
+
+def test_dir_name_short_unchanged(tmp_path):
+    # 짧은 이름은 기존 동작 그대로(정규화 + 공백 제거)
+    assert _dir_name("10·29 참사 위원회 운영규정") == "10ㆍ29참사위원회운영규정"
+
+
+def test_resolve_long_name_is_linux_safe(tmp_path):
+    p = resolve_path(tmp_path, "관세" + "가" * 400, "고시", "1")
+    for part in p.relative_to(tmp_path).parts:
+        assert len(part.encode("utf-8")) <= 255
 
 
 def test_existing_mst_reads_frontmatter(tmp_path):
