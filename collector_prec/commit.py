@@ -14,12 +14,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-# 기본값: law.zihado.com 루트(로컬 중첩 구조 기준).
-# CI 등 레이아웃이 다를 때는 LEGALIZE_KR_REPO 환경변수로 재정의 가능.
+# 데이터(prec/)는 코드와 같은 repo(fast-law-search) 루트에 있다.
+# 레이아웃이 다른 환경에서는 PREC_REPO 환경변수로 재정의 가능.
 _REPO = (
-    Path(os.environ["LEGALIZE_KR_REPO"]).resolve()
-    if os.environ.get("LEGALIZE_KR_REPO")
-    else Path(__file__).resolve().parent.parent.parent
+    Path(os.environ["PREC_REPO"]).resolve()
+    if os.environ.get("PREC_REPO")
+    else Path(__file__).resolve().parent.parent
 )
 _PREC = _REPO / "prec"
 

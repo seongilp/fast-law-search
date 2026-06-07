@@ -20,7 +20,7 @@ class CollectorConfig:
 
     @staticmethod
     def from_env() -> "CollectorConfig":
-        root = os.environ.get("PREC_ROOT", "../prec")
+        root = os.environ.get("PREC_ROOT", "prec")
         base = Path(__file__).resolve().parent.parent
         prec_root = (base / root).resolve() if not os.path.isabs(root) else Path(root)
         prec_root.mkdir(parents=True, exist_ok=True)

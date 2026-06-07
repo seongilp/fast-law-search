@@ -22,7 +22,7 @@ class PrecConfig:
 
     @staticmethod
     def from_env() -> "PrecConfig":
-        root = os.environ.get("PREC_ROOT", "../prec")
+        root = os.environ.get("PREC_ROOT", "prec")
         base = Path(__file__).resolve().parent.parent
         prec_root = (base / root).resolve() if not os.path.isabs(root) else Path(root)
         if not prec_root.is_dir():
