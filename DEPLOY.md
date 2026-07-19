@@ -3,7 +3,7 @@
 ## 라이브
 - **UI**: https://law.zihado.com (Cloudflare Pages, 프로젝트명 `law`, 별칭 fast-law-search.pages.dev)
 - **검색 엣지 캐시**: https://law-search-cache.zihado.workers.dev (Cloudflare Worker, UI 가 호출)
-- **검색 origin**: https://api-law.zihado.com (Cloudflare Tunnel → Droplet Typesense:8108)
+- **검색 origin**: https://api-law.zihado.com (Cloudflare Tunnel → ebs 홈서버 Typesense:8108)
 - **UI 레포**: https://github.com/seongilp/fast-law-search
 
 ## 검색 엣지 캐시 (Cloudflare Worker)
@@ -22,51 +22,71 @@
 브라우저 ──HTTPS──> law.zihado.com (Cloudflare Pages, 정적 UI/dist)
    │
    └──HTTPS──> api-law.zihado.com ──> Cloudflare Tunnel
-                                          │ (cloudflared 컨테이너, .tuntoken)
+                                          │ (cloudflared 컨테이너, .tuntoken, --network host)
                                           ▼
-                                      DO Droplet  typesense:8108
+                                      ebs 홈서버  typesense:8108
                                       (법령+행정규칙 조문 ~517,000건, alias=kr_laws)
 ```
 > ⚠️ 이전 메모의 "Caddy + nip.io(146-190-96-6.nip.io)" 구성은 **사용하지 않는다**.
 > 실제 외부 노출은 **Cloudflare Tunnel(cloudflared)** 이고 공개 주소는 `api-law.zihado.com`.
-> Droplet 8108 은 호스트에 바인딩되어 있으나 외부 방화벽으로 막고 터널 경유만 허용.
+> ebs 8108 은 홈 LAN 내부에만 열려 있고 외부 접근은 터널 경유만 허용.
 
 > **행정규칙 수집 (2026-06-03, Claude 가 SSH 로 Droplet 에 직접 배포)**:
 > law.go.kr OpenAPI 에서 현행 행정규칙(고시·훈령·예규·세칙 등) ~23,584건을
 > 수집해 `corpus/kr` 에 법령과 함께 색인. 수집기 `collector/` + OC 키 `.lawoc`
 > 를 Droplet 에 올리고 `reindex.sh` 에 수집 단계를 통합했다(이하 참조).
 
-## DigitalOcean Droplet
-- 이름: `legalize-typesense`, 리전 sgp1, 2GB/1vCPU ($12/월)
-- IP: `146.190.96.6`
-- 앱 경로: `/opt/legalize/`
-  - `docker-compose.yml` — **typesense 단독** (admin key·`--enable-cors`, 외부 노출 금지)
-  - `cloudflared` 컨테이너 — Cloudflare Tunnel(토큰 `.tuntoken`)로 api-law.zihado.com 노출
-    (compose 가 아니라 별도 `docker run` 으로 기동되어 있음)
+## ebs 홈서버 (2026-07-19 DO Droplet 에서 이관)
+- 호스트: `ebs`(LAN 192.168.123.105) / Tailscale `t-ebs`(100.112.134.2), user `ubuntu`
+  (Ubuntu 26.04, 16GB RAM, ssh config 에 등록됨). **구 DO Droplet(146.190.96.6)은 파기됨.**
+- 앱 경로: `/opt/legalize/` (ubuntu 소유)
+  - `docker-compose.yml` — **typesense 단독** (admin key·`--enable-cors`·`--reset-peers-on-error`,
+    외부 노출 금지). `--reset-peers-on-error` 는 데이터 이관 시 raft 피어 IP 변경 대응용.
+  - `cloudflared` 컨테이너 — Cloudflare Tunnel(토큰 `.tuntoken`)로 api-law.zihado.com 노출.
+    compose 가 아니라 별도 `docker run --network host` 로 기동 (ingress 가 localhost:8108 참조).
   - `corpus/` — 원본 법령 레포(`legalize-kr/legalize-kr`) clone + 행정규칙 수집분(untracked)
   - `collector/` — 행정규칙 수집기 (search 레포의 `collector/` 사본)
+  - `fls/` — fast-law-search clone (판례 데이터·인덱서)
   - `.lawoc` — law.go.kr OpenAPI OC 키 (chmod 600, git·코드 미포함)
-  - `.adminkey` / `.telegram` / `.tuntoken` — 운영 비밀 (chmod 600)
+  - `.adminkey` / `.telegram` / `.telegram-health` / `.tuntoken` — 운영 비밀 (chmod 600)
+  - `.venv` — Python 3.14 venv (typesense==0.21.0 등)
   - `reindex.sh` — 법령 pull + 행정규칙 수집 + 무중단 재색인 스크립트
-- 8108 은 호스트 바인딩되어 있으나 외부 방화벽 차단 → 실제 접근은 Cloudflare Tunnel 경유.
+- 8108 은 홈 LAN 내부에만 열려 있고 외부 접근은 Cloudflare Tunnel 경유.
+- 이관 방식: Typesense 데이터 볼륨(`legalize_typesense-data`)을 통째로 복사해
+  컬렉션·alias·API 키(search-only 포함)가 그대로 유지됨 → UI/DNS/터널 변경 불필요.
+  주의: raft 스테일 세그먼트(`state/log/log_inprogress_...0001`) 충돌 시 해당 파일 제거.
 
 ## 자동 재색인
-- Droplet cron: 매일 03:00 KST → `reindex.sh`
+- ebs cron(ubuntu): 매일 03:00 KST → `reindex.sh` (ebs 는 TZ=Asia/Seoul 이라 KST 그대로)
   (법령 레포 `git pull` → 행정규칙 `collector.fetch` 수집(resume) → `index.py --alias` 무중단 전환)
 - 행정규칙 수집은 non-fatal: law.go.kr 일시 장애 시에도 기존 수집분으로 색인 계속.
-- 수동: `ssh root@146.190.96.6 /opt/legalize/reindex.sh`
+- 수동: `ssh ebs /opt/legalize/reindex.sh`
 - **flock** 으로 동시 실행 방지(`.reindex.lock`). 중복 실행 시 alias/cleanup
   충돌로 실패(RC=2)하던 문제를 막는다.
 - **텔레그램 알림**(성공/실패 모두):
   - ✅ 성공: `법령 색인 완료 / 조문 N건 / alias 전환 / 🔎 law.zihado.com`
   - ❌ 실패: `법령 색인 실패` + 마지막 로그 4줄
   - 봇 `@opgarun_bot`(opgarun 과 공용), chat id `66077028`
-  - 자격: Droplet `/opt/legalize/.telegram` (chmod 600, `TELEGRAM_BOT_TOKEN`
+  - 자격: ebs `/opt/legalize/.telegram` (chmod 600, `TELEGRAM_BOT_TOKEN`
     /`TELEGRAM_CHAT_ID`). git·코드에 미포함.
-- `reindex.sh` 는 Droplet 운영 파일(레포에 없음). 전체 내용은 `docs/reindex.sh` 참고용 사본.
+- `reindex.sh` 는 ebs 운영 파일(레포에 없음). 전체 내용은 `docs/reindex.sh` 참고용 사본.
+
+## 일일 색인 상태 점검 (헬스 리포트)
+- ebs cron(ubuntu): 매일 **08:00 KST**(`0 8 * * *`, TZ=Asia/Seoul) → `index_health.sh`
+  → 텔레그램으로 색인 상태 한 장 요약 발송. (재색인 03:00 이후 결과 확인용)
+- 점검 항목: 엔진 health · `kr_laws`/`kr_precedents` 도큐먼트 수(하한 임계치 미만 시 ⚠️)
+  · **어제 대비 증감**(`(+N)`/`(-N)`/`(±0)`) · alias 유무 · 샘플검색(`개인정보`) 응답
+  · 외부 엔드포인트(`api-law.zihado.com/health`) · 디스크/메모리 · 최근 색인 시각.
+  이상 없으면 `✅ 색인 상태 정상`, 이상 시 `⚠️ … 확인필요`.
+- 증감은 직전 실행 건수를 `/opt/legalize/.index_health.state`(JSON)에 저장해 비교한다.
+  첫 실행/조회 실패 시 해당 컬렉션은 증감 미표시(기존 기준값 유지).
+- 수동: `ssh ebs /opt/legalize/index_health.sh`
+- 자격: ebs `/opt/legalize/.telegram-health` (chmod 600, `TELEGRAM_BOT_TOKEN`
+  /`TELEGRAM_CHAT_ID`). 봇 `@opgarun_bot`, chat id `66077028`. git·코드 미포함.
+- `index_health.sh` 도 ebs 운영 파일. 전체 내용은 `docs/index_health.sh` 참고용 사본(시크릿 없음).
 
 ## 키 관리
-- **admin(쓰기) 키**: Droplet 의 `docker-compose.yml` 에만 존재. 외부 노출 금지.
+- **admin(쓰기) 키**: ebs 의 `docker-compose.yml` 에만 존재. 외부 노출 금지.
 - **search-only 키**: UI `ui/.env.local` 의 `VITE_TYPESENSE_SEARCH_KEY`.
   `documents:search` 권한만 → 브라우저 노출 안전.
 - 키 재발급(rotate) 시: admin 키로 `POST /keys` 호출 후 `ui/.env.local` 갱신 → 재빌드/재배포.
