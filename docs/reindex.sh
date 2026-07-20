@@ -41,8 +41,13 @@ ${tail_log}"
 }
 
 # 1) 원본 법령 레포 동기화 (corpus/kr = 법률·시행령·시행규칙 등)
+#    업스트림(legalize-kr)은 법 개정일을 커밋 날짜로 삼아 히스토리를 통째로 재생성·force-push 한다.
+#    그때마다 로컬과 히스토리가 분기해 `pull --ff-only` 가 영구히 실패하므로(2026-07-20 장애),
+#    fetch + reset --hard 로 업스트림을 항상 정본으로 삼는다.
+#    corpus 는 읽기 전용 미러이고, 우리가 수집한 행정규칙은 untracked 라 reset 대상이 아니다.
 if [ -d corpus/.git ]; then
-  git -C corpus pull --ff-only >>"$LOG" 2>&1 || fail
+  git -C corpus fetch --depth 1 origin main >>"$LOG" 2>&1 || fail
+  git -C corpus reset --hard FETCH_HEAD >>"$LOG" 2>&1 || fail
 else
   git clone --depth 1 https://github.com/legalize-kr/legalize-kr.git corpus >>"$LOG" 2>&1 || fail
 fi
