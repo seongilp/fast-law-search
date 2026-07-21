@@ -26,3 +26,6 @@ edge-cache/.wrangler/
 # 판례 back-fill 헬퍼(로컬 전용)
 .backfill_prec.sh
 .backfill_prec.log
+
+# wrangler 로컬 캐시
+.wrangler/
