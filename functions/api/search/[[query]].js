@@ -52,6 +52,7 @@ function usage(status, error) {
   return json(
     {
       error,
+      docs: "https://law.zihado.com/api",
       usage: "GET /api/search/{검색어}",
       params: {
         type: `${Object.keys(COLLECTIONS).join(" | ")} (기본 laws)`,
@@ -69,11 +70,14 @@ function usage(status, error) {
   );
 }
 
-/** 1~max 범위의 정수만 허용하고, 벗어나면 기본값으로 되돌린다. */
+/**
+ * 정수 파라미터. 숫자가 아니면 기본값, 범위를 벗어나면 가장 가까운 경계로 깎는다.
+ * (per_page=120 을 요청한 이용자는 20건이 아니라 상한인 100건을 기대한다.)
+ */
 function intParam(raw, fallback, min, max) {
   const n = Number.parseInt(raw ?? "", 10);
-  if (!Number.isFinite(n) || n < min || n > max) return fallback;
-  return n;
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(n, min), max);
 }
 
 /** Typesense 하이라이트에서 가장 잘 맞은 조각 하나를 뽑는다(<mark> 포함). */
@@ -125,7 +129,7 @@ export async function onRequestOptions() {
   return new Response(null, { headers: CORS });
 }
 
-export async function onRequestGet({ params, request, env }) {
+export async function onRequestGet({ params, request, env, waitUntil }) {
   // [[query]] 는 경로 세그먼트 배열 — 검색어에 '/' 가 있어도 원형을 복원한다.
   const raw = Array.isArray(params.query) ? params.query.join("/") : (params.query ?? "");
   let q;
@@ -158,6 +162,26 @@ export async function onRequestGet({ params, request, env }) {
     return json({ error: "검색 서비스가 설정되지 않았습니다." }, 503);
   }
 
+  // 엣지 캐시: 같은 질의 반복 시 홈서버(ebs)까지 가지 않는다.
+  // 정규화한 파라미터로 키를 만들어 파라미터 순서가 달라도 같은 캐시를 쓴다.
+  const cacheKey = new Request(
+    `https://law-api-cache/search?${new URLSearchParams({
+      q,
+      type,
+      page: String(page),
+      per_page: String(perPage),
+      full: full ? "1" : "0",
+    })}`,
+    { method: "GET" },
+  );
+  const cache = caches.default;
+  const cached = await cache.match(cacheKey);
+  if (cached) {
+    const hit = new Response(cached.body, cached);
+    hit.headers.set("x-api-cache", "HIT");
+    return hit;
+  }
+
   const upstream = new URL(`${ORIGIN}/collections/${target.collection}/documents/search`);
   upstream.searchParams.set("q", q);
   upstream.searchParams.set("query_by", target.queryBy);
@@ -186,7 +210,7 @@ export async function onRequestGet({ params, request, env }) {
   const mapper = type === "precedents" ? mapPrecedent : mapLaw;
 
   const found = data.found ?? 0;
-  return json(
+  const resp = json(
     {
       query: q,
       type,
@@ -203,4 +227,8 @@ export async function onRequestGet({ params, request, env }) {
     200,
     { "Cache-Control": `public, max-age=${CACHE_SECONDS}` },
   );
+
+  waitUntil(cache.put(cacheKey, resp.clone()));
+  resp.headers.set("x-api-cache", "MISS");
+  return resp;
 }
