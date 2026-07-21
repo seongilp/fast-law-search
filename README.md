@@ -75,6 +75,61 @@ python indexer/index.py --keep   # 기존 유지하고 upsert(증분)
 검색 통계(건수·응답시간), 하단에 페이지네이션이 있습니다.
 검색 상태는 URL에 동기화되어(`routing`) 링크 공유가 됩니다.
 
+## 공개 검색 API
+
+키 없이 호출할 수 있는 JSON API입니다. Typesense 검색 키는 Pages Function이
+서버 측에서만 쥐고 있어 이용자에게 노출되지 않습니다.
+
+```
+GET https://law.zihado.com/api/search/{검색어}
+```
+
+| 파라미터 | 값 | 기본 |
+|---|---|---|
+| `type` | `laws`(법령·행정규칙) / `precedents`(판례) | `laws` |
+| `page` | 1부터 | `1` |
+| `per_page` | 1~100 | `20` |
+| `full` | `1`이면 본문 전체 (기본은 앞 500자) | — |
+
+```bash
+curl 'https://law.zihado.com/api/search/개인정보?per_page=5'
+curl 'https://law.zihado.com/api/search/손해배상?type=precedents'
+```
+
+응답:
+
+```json
+{
+  "query": "개인정보",
+  "type": "laws",
+  "page": 1,
+  "per_page": 5,
+  "total": 8536,
+  "total_pages": 1708,
+  "took_ms": 13,
+  "results": [
+    {
+      "law_name": "개인정보 보호법",
+      "law_type": "법률",
+      "article_label": "제29조",
+      "article_title": "안전조치의무",
+      "content": "제29조 (안전조치의무) …",
+      "ministry": ["개인정보보호위원회"],
+      "status": "현행",
+      "enforcement_date": 20260315,
+      "source_url": "https://…",
+      "snippet": "<mark>개인정보</mark>처리자는 …"
+    }
+  ]
+}
+```
+
+- CORS 전면 허용(`*`) — 브라우저에서 직접 호출 가능
+- 응답은 엣지에서 300초 캐시
+- 오류는 `{"error": "..."}` 형태이며 검색어 누락·잘못된 `type`은 400, 업스트림 장애는 502
+- 구현: `functions/api/search/[[query]].js` (Cloudflare Pages Function),
+  검색 키는 Pages 환경변수 `TYPESENSE_SEARCH_KEY`
+
 ## 검색 도큐먼트 스키마
 
 | 필드 | 타입 | 용도 |
