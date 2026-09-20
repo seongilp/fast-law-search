@@ -20,6 +20,8 @@ LOG=$(mktemp)
 NOW() { TZ=Asia/Seoul date '+%Y-%m-%d %H:%M KST'; }
 
 tg() {
+  # Discord 먼저 — 아래 텔레그램 분기는 설정 파일이 없으면 return 한다.
+  /usr/local/bin/notify-discord.sh "$1" 2>/dev/null || true
   [ -f /opt/legalize/.telegram ] || return 0
   # shellcheck disable=SC1091
   set -a; . /opt/legalize/.telegram; set +a
@@ -39,6 +41,34 @@ ${tail_log}"
   rm -f "$LOG"
   exit 1
 }
+
+# 0) Typesense 헬스 체크 + 자가 복구
+#    파일 디스크립터 고갈(EMFILE) 등으로 raft 노드가 ERROR 로 빠지면 스스로 못 빠져나온다
+#    (--reset-peers-on-error 가 있어도 "can't reset_peer"). 컨테이너를 재시작하면
+#    스냅샷에서 복구되므로 색인 전에 확인하고 필요하면 재시작한다.
+#    2026-09-17 에 이 상태로 나흘간 매일 밤 색인이 503 으로 실패했다.
+wait_healthy() {
+  local tries=$1
+  for _ in $(seq 1 "$tries"); do
+    if [ "$(curl -s --max-time 10 http://localhost:8108/health)" = '{"ok":true}' ]; then
+      return 0
+    fi
+    sleep 15
+  done
+  return 1
+}
+
+if ! wait_healthy 4; then
+  echo "[warn] Typesense 비정상 — 컨테이너 재시작 후 복구 대기" >>"$LOG"
+  tg "⚠️ Typesense 비정상 — 자동 재시작 시도
+$(NOW)"
+  docker compose -f /opt/legalize/docker-compose.yml restart >>"$LOG" 2>&1
+  if ! wait_healthy 40; then
+    echo "[error] 재시작 후에도 Typesense 가 준비되지 않음" >>"$LOG"
+    fail
+  fi
+  echo "[info] Typesense 자동 복구 성공" >>"$LOG"
+fi
 
 # 1) 원본 법령 레포 동기화 (corpus/kr = 법률·시행령·시행규칙 등)
 #    업스트림(legalize-kr)은 법 개정일을 커밋 날짜로 삼아 히스토리를 통째로 재생성·force-push 한다.

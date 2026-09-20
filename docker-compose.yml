@@ -3,6 +3,13 @@ services:
     image: typesense/typesense:27.1
     container_name: legalize-typesense
     restart: unless-stopped
+    # 기본 nofile 1024 로는 색인 중 raft 로그 세그먼트 + rocksdb 파일이 한도를 넘겨
+    # EMFILE 이 나고, 그러면 raft 노드가 ERROR 상태로 빠져 스스로 복구하지 못한다
+    # (ebs 운영기에서 2026-09-17 발생 → 매일 밤 색인이 503 으로 실패했다).
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 524288
     ports:
       - "8108:8108"
     volumes:
